@@ -12,11 +12,6 @@ const gradients = [
   'from-neutral-200 to-neutral-400',
 ]
 
-const phoneModels = [
-  'iPhone 15 Pro Max', 'iPhone 15 Pro', 'iPhone 15',
-  'iPhone 14 Pro Max', 'iPhone 14 Pro', 'iPhone 14',
-  'iPhone 13', 'Samsung S24 Ultra', 'Samsung S24',
-]
 
 function CollectionDetail() {
   const { id } = useParams()
@@ -32,6 +27,17 @@ function CollectionDetail() {
   const [qty, setQty] = useState(1)
   const [added, setAdded] = useState(false)
   const [activeImg, setActiveImg] = useState('')
+  const [modelOrder, setModelOrder] = useState([])        // ⭐ 全局型號順序
+
+  // ⭐ 讀取全局手機型號嘅排序
+  useEffect(() => {
+    supabase
+      .from('phone_models')
+      .select('name')
+      .eq('active', true)
+      .order('sort_order', { ascending: true })
+      .then(({ data }) => setModelOrder((data || []).map((m) => m.name)))
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -102,6 +108,16 @@ function CollectionDetail() {
 
   const gradient = gradients[(design.sort_order ?? 1) - 1] || gradients[0]
 
+  // ⭐ 按全局順序排好可選型號
+  const availableModels = (() => {
+    const arr = Array.isArray(design.phone_models) ? [...design.phone_models] : []
+    return arr.sort((a, b) => {
+      const ia = modelOrder.indexOf(a)
+      const ib = modelOrder.indexOf(b)
+      return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib)
+    })
+  })()
+
   const onSale = design.sale_price != null
   const finalPrice = onSale ? design.sale_price : design.price_hkd
   const soldOut = design.in_stock === false || (design.stock != null && design.stock <= 0)
@@ -121,6 +137,7 @@ function CollectionDetail() {
 
   function handleAdd() {
     if (soldOut) return                       // ⭐ 缺貨直接擋
+    if (added) return                         // ⭐ 已加入嘅冷靜期內,擋住重複
     if (!model) return alert('請揀手機型號')
     addItem({
       designId: design.id,
@@ -217,11 +234,17 @@ function CollectionDetail() {
           {/* 型號 */}
           <div className="mt-8">
             <label className="block text-sm font-medium mb-2">手機型號 <span className="text-red-400">*</span></label>
-            <select value={model} onChange={(e) => setModel(e.target.value)} disabled={soldOut}
-              className="w-full border border-gray-200 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10 disabled:bg-gray-50 disabled:text-gray-300">
-              <option value="">請選擇…</option>
-              {phoneModels.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
+            {availableModels.length === 0 ? (
+              <p className="text-sm text-gray-400 border border-gray-100 rounded-lg px-4 py-3 bg-gray-50">
+                呢款暫未設定可選型號,請用 WhatsApp 查詢。
+              </p>
+            ) : (
+              <select value={model} onChange={(e) => setModel(e.target.value)} disabled={soldOut}
+                className="w-full border border-gray-200 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10 disabled:bg-gray-50 disabled:text-gray-300">
+                <option value="">請選擇…</option>
+                {availableModels.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            )}
           </div>
 
           {/* 數量 */}
@@ -237,7 +260,7 @@ function CollectionDetail() {
           </div>
 
           {/* 加入購物車 */}
-          <button onClick={handleAdd} disabled={soldOut}
+          <button onClick={handleAdd} disabled={soldOut || added || availableModels.length === 0}
             className="w-full mt-8 bg-black text-white py-4 rounded-lg font-medium hover:bg-gray-800 transition disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed">
             {soldOut ? '暫時缺貨' : (added ? '✓ 已加入購物車' : '加入購物車')}
           </button>

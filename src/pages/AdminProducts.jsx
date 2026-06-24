@@ -5,29 +5,31 @@ import AdminNav from '../components/AdminNav'
 const emptyForm = {
   id: null,
   name_zh_hk: '',
-  parent_id: '',     // UI:揀咗邊個大系列
-  child_id: '',      // UI:揀咗邊個子系列(可空)
+  parent_id: '',
+  child_id: '',
   description: '',
   price_hkd: '',
   sale_price: '',
-  stock: '', 
+  stock: '',
   in_stock: true,
   active: true,
   sort_order: 0,
   image_url: '',
   images: [],
+  phone_models: [],
 }
 
 function AdminProducts() {
   const [list, setList] = useState([])
-  const [collections, setCollections] = useState([])   // ⭐ 系列清單
+  const [collections, setCollections] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(emptyForm)
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [allModels, setAllModels] = useState([])
 
-  useEffect(() => { load(); loadCollections() }, [])
+  useEffect(() => { load(); loadCollections(); loadModels() }, [])
 
   async function load() {
     setLoading(true)
@@ -40,7 +42,7 @@ function AdminProducts() {
     setLoading(false)
   }
 
-  // ⭐ 載入系列(畀揀選用)
+  // 載入系列(畀揀選用)
   async function loadCollections() {
     const { data, error } = await supabase
       .from('collections')
@@ -50,7 +52,17 @@ function AdminProducts() {
     setCollections(data || [])
   }
 
-  // 大系列 / 某大系列嘅子系列
+  // 載入全局手機型號(只攞 active)
+  async function loadModels() {
+    const { data, error } = await supabase
+      .from('phone_models')
+      .select('name, active')
+      .eq('active', true)
+      .order('sort_order', { ascending: true })
+    if (error) { console.error(error); return }
+    setAllModels((data || []).map((m) => m.name))
+  }
+
   const parents = collections.filter((c) => !c.parent_id)
   const childrenOf = (pid) => collections.filter((c) => c.parent_id === pid)
   const childrenOfSelected = form.parent_id ? childrenOf(form.parent_id) : []
@@ -61,7 +73,6 @@ function AdminProducts() {
   }
 
   function openEdit(p) {
-    // 由 collection_id 反推大/子系列
     let parent_id = ''
     let child_id = ''
     const cid = p.collection_id
@@ -81,12 +92,13 @@ function AdminProducts() {
       description: p.description || '',
       price_hkd: p.price_hkd ?? '',
       sale_price: p.sale_price ?? '',
-      stock: p.stock ?? '',          // ← 新增
+      stock: p.stock ?? '',
       in_stock: p.in_stock ?? true,
       active: p.active ?? true,
       sort_order: p.sort_order ?? 0,
       image_url: p.image_url || '',
       images: Array.isArray(p.images) ? p.images : [],
+      phone_models: Array.isArray(p.phone_models) ? p.phone_models : [],
     })
     setShowForm(true)
   }
@@ -128,6 +140,19 @@ function AdminProducts() {
     setForm((f) => ({ ...f, image_url: url }))
   }
 
+  // 揀 / 取消某型號
+  function toggleModel(name) {
+    setForm((f) => {
+      const has = f.phone_models.includes(name)
+      return {
+        ...f,
+        phone_models: has
+          ? f.phone_models.filter((m) => m !== name)
+          : [...f.phone_models, name],
+      }
+    })
+  }
+
   function removeImage(url) {
     setForm((f) => {
       const images = f.images.filter((u) => u !== url)
@@ -142,24 +167,24 @@ function AdminProducts() {
 
     setSaving(true)
 
-    // 最終系列 = 子系列(如有揀)否則大系列
     const finalCollectionId = form.child_id || form.parent_id || null
     const selectedCol = collections.find((c) => c.id === finalCollectionId)
-    const collectionName = selectedCol ? selectedCol.name : null  // 過渡兼容文字欄
+    const collectionName = selectedCol ? selectedCol.name : null
 
     const payload = {
       name_zh_hk: form.name_zh_hk.trim(),
-      collection_id: finalCollectionId,        // ⭐ 新:掛系列
-      collection: collectionName,              // ⭐ 過渡:前台未改都顯示到
+      collection_id: finalCollectionId,
+      collection: collectionName,
       description: form.description.trim() || null,
       price_hkd: Number(form.price_hkd),
       sale_price: form.sale_price === '' ? null : Number(form.sale_price),
-      stock: form.stock === '' ? null : Number(form.stock),   // ← 新增
+      stock: form.stock === '' ? null : Number(form.stock),
       in_stock: form.in_stock,
       active: form.active,
       sort_order: Number(form.sort_order) || 0,
       image_url: form.image_url || null,
       images: form.images,
+      phone_models: form.phone_models,
     }
 
     let error
@@ -189,9 +214,8 @@ function AdminProducts() {
     load()
   }
 
-  // 顯示某 design 嘅系列名(列表用)
   function colLabel(p) {
-    if (!p.collection_id) return p.collection || null  // 後備:舊文字
+    if (!p.collection_id) return p.collection || null
     const c = collections.find((x) => x.id === p.collection_id)
     if (!c) return p.collection || null
     if (c.parent_id) {
@@ -261,7 +285,6 @@ function AdminProducts() {
                       : <>HK${p.price_hkd}</>}
                     <span className="text-gray-300"> · 排序 {p.sort_order}</span>
                     {p.stock != null && <span className="text-gray-300"> · 庫存 {p.stock}</span>}
-
                   </p>
                 </div>
 
@@ -334,7 +357,7 @@ function AdminProducts() {
                     className={inputClass} placeholder="例如 簡約大理石" />
                 </div>
 
-                {/* ⭐ 系列:兩層揀選 */}
+                {/* 系列:兩層揀選 */}
                 <div>
                   <label className="block text-sm font-medium mb-2">所屬系列</label>
 
@@ -354,7 +377,7 @@ function AdminProducts() {
                         ))}
                       </select>
 
-                      {/* 子系列(揀咗有子嘅大系列先出現) */}
+                      {/* 子系列 */}
                       <select value={form.child_id}
                         onChange={(e) => setForm({ ...form, child_id: e.target.value })}
                         disabled={childrenOfSelected.length === 0}
@@ -391,13 +414,43 @@ function AdminProducts() {
                       className={inputClass} placeholder="留空=無特價" />
                   </div>
                 </div>
-                 <div>
+
+                <div>
                   <label className="block text-sm font-medium mb-2">
                     庫存數量 <span className="text-gray-400 font-normal">(留空 = 不追蹤庫存)</span>
                   </label>
                   <input type="number" value={form.stock}
                     onChange={(e) => setForm({ ...form, stock: e.target.value })}
                     className={inputClass} placeholder="例如 50;留空即無限" />
+                </div>
+
+                {/* 適用手機型號 */}
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    適用手機型號 <span className="text-gray-400 font-normal">(揀邊幾款,客人就只可揀呢啲)</span>
+                  </label>
+                  {allModels.length === 0 ? (
+                    <p className="text-sm text-gray-400 border border-gray-100 rounded-lg px-4 py-3 bg-gray-50">
+                      未有型號,請先去設定頁「手機型號」加入。
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {allModels.map((name) => {
+                        const on = form.phone_models.includes(name)
+                        return (
+                          <button key={name} type="button" onClick={() => toggleModel(name)}
+                            className={`px-3 py-1.5 rounded-lg text-sm border transition ${
+                              on ? 'border-black bg-black text-white' : 'border-gray-200 hover:border-gray-400'
+                            }`}>
+                            {name}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                  {allModels.length > 0 && form.phone_models.length === 0 && (
+                    <p className="text-xs text-amber-600 mt-1">⚠ 未揀任何型號,客人將無法選擇 / 加入購物車。</p>
+                  )}
                 </div>
 
                 <div>

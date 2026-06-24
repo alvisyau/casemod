@@ -3,6 +3,8 @@ import { supabase } from '../supabaseClient'
 import AdminNav from '../components/AdminNav'
 import ErrorBoundary from '../components/ErrorBoundary'
 import SFImport from '../components/SFImport'
+import PhoneModelManager from '../components/PhoneModelManager'
+
 
 // 運費預設值(讀唔到 DB 時頂住)
 const DEFAULT_SHIPPING = {
@@ -127,7 +129,7 @@ function AdminSettings() {
     <>
       <AdminNav />
       <div className="max-w-2xl mx-auto px-4 py-12">
-        <h1 className="text-2xl font-bold mb-2">收款設定</h1>
+        <h1 className="text-2xl font-bold mb-2">商店設定</h1>
         <p className="text-sm text-gray-400 mb-8">呢度設定嘅資料會喺客人結帳付款頁顯示。</p>
 
         {/* FPS */}
@@ -224,6 +226,15 @@ function AdminSettings() {
           <ErrorBoundary>
             <SFImport onDone={(res) => console.log(res.msg)} />
           </ErrorBoundary>
+        </section>
+
+        {/* ⭐ 手機型號管理 */}
+        <section className="border border-gray-100 rounded-xl p-6 mb-6">
+          <h2 className="font-medium mb-1">手機型號</h2>
+          <p className="text-xs text-gray-400 mb-4">
+            喺度管理全店嘅手機型號清單。新增產品時可揀邊幾款型號適用。
+          </p>
+          <PhoneModelManager />
         </section>
 
         <div className="flex items-center gap-4">

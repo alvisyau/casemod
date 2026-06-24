@@ -5,11 +5,14 @@ import { useCart } from '../context/CartContext'
 
 const WHATSAPP_NUMBER = '85266988317'
 
+// ⭐ 澳門預設順豐站(氹仔華南工廈)
+const MO_DEFAULT_STATION = '853AA'
+
 // ⭐ 運費「預設值」(DB 讀到之前頂住),carrier 名固定
 const SHIPPING = {
   香港: { carrier: '順豐速運', fee: 0 },
   內地: { carrier: '順豐速運', fee: 0 },
-  澳門: { carrier: '平郵 / 其他快遞', fee: 60 },
+  澳門: { carrier: '順豐速運', fee: 60 },
   台灣: { carrier: '平郵 / 其他快遞', fee: 80 },
   其他: { carrier: '平郵 / 其他快遞', fee: 150 },
 }
@@ -29,57 +32,41 @@ const REGION_ORDER = { 香港島: 0, 九龍: 1, 新界: 2, 離島: 3, 其他: 9 
 // ⭐ 各大區嘅地名關鍵字(順豐點多數用呢類細區名)
 const REGION_AREAS = {
   香港島: [
-    // 中西區
     '中環', '上環', '西環', '西營盤', '堅尼地城', '石塘咀', '金鐘', '半山', '山頂',
     '摩星嶺', '薄扶林', '數碼港',
-    // 灣仔區
     '灣仔', '銅鑼灣', '跑馬地', '大坑', '渣甸山', '掃桿埔', '天后', '炮台山',
-    // 東區
-    '北角', '鰂魚涌', '鰂魚涌', '太古', '西灣河', '筲箕灣', '柴灣', '小西灣',
+    '北角', '鰂魚涌', '太古', '西灣河', '筲箕灣', '柴灣', '小西灣',
     '杏花邨', '康山', '愛秩序灣',
-    // 南區
     '香港仔', '鴨脷洲', '黃竹坑', '深水灣', '淺水灣', '赤柱', '石澳', '舂坎角',
     '田灣', '華富', '海洋公園',
     '港島',
   ],
   九龍: [
-    // 油尖旺
     '尖沙咀', '尖沙嘴', '尖東', '佐敦', '油麻地', '旺角', '太子', '大角咀', '油尖旺',
-    // 深水埗
     '深水埗', '長沙灣', '荔枝角', '美孚', '石硤尾', '南昌', '又一村', '又一城',
     '大窩坪', '昂船洲',
-    // 九龍城
     '九龍城', '九龍塘', '土瓜灣', '紅磡', '何文田', '馬頭角', '馬頭圍', '啟德',
     '海心', '黃埔', '老龍坑',
-    // 黃大仙
     '黃大仙', '鑽石山', '新蒲崗', '樂富', '慈雲山', '橫頭磡', '東頭', '竹園',
     '彩虹', '牛池灣', '牛頭角', '彩雲',
-    // 觀塘
-    '觀塘', '九龍灣', '藍田', '油塘', '秀茂坪', '茶果嶺', '九龍灣', '佐敦谷',
+    '觀塘', '九龍灣', '藍田', '油塘', '秀茂坪', '茶果嶺', '佐敦谷',
     '鯉魚門', '坪石',
     '九龍',
   ],
   新界: [
-    // 荃灣 / 葵青
     '荃灣', '葵涌', '葵芳', '葵興', '青衣', '大窩口', '荔景', '梨木樹', '石圍角',
     '汀九', '深井', '青龍頭',
-    // 屯門 / 元朗
     '屯門', '元朗', '天水圍', '洪水橋', '流浮山', '錦田', '錦上路', '八鄉', '十八鄉',
     '新田', '落馬洲', '屏山', '廈村', '藍地', '掃管笏', '小欖',
-    // 北區
     '上水', '粉嶺', '北區', '沙頭角', '打鼓嶺', '古洞', '坪輋', '聯和墟', '華明',
-    // 大埔
     '大埔', '太和', '大尾督', '林村', '汀角', '船灣', '康樂園',
-    // 沙田
     '沙田', '大圍', '火炭', '馬鞍山', '小瀝源', '石門', '烏溪沙', '第一城',
     '車公廟', '九肚',
-    // 西貢 / 將軍澳
     '西貢', '將軍澳', '坑口', '調景嶺', '寶琳', '康城', '清水灣', '蠔涌', '北潭涌',
     '日出康城',
     '新界',
   ],
   離島: [
-    // 大嶼山 / 離島
     '東涌', '大嶼山', '梅窩', '愉景灣', '貝澳', '長沙', '塘福', '大澳', '昂坪',
     '赤鱲角', '赤臘角', '機場', '亞洲國際博覽館',
     '長洲', '坪洲', '南丫島', '榕樹灣', '索罟灣', '馬灣', '喜靈洲', '蒲台島',
@@ -108,23 +95,23 @@ function Checkout() {
   const [payMethod, setPayMethod] = useState('FPS')
 
   // ⭐ 送貨相關
-  const [deliveryType, setDeliveryType] = useState('sf_store') // 香港用:sf_store / sf_locker / home
+  const [deliveryType, setDeliveryType] = useState('sf_store') // sf_store / sf_locker / home
   const [sfStationCode, setSfStationCode] = useState('')
   const [sfStationName, setSfStationName] = useState('')
-  const [selectedPoint, setSelectedPoint] = useState(null)  // ⭐ 揀中嘅點(全部資料)
+  const [selectedPoint, setSelectedPoint] = useState(null)
 
   // ⭐ 順豐點清單(由 DB 讀)
   const [sfPoints, setSfPoints] = useState([])
   const [loadingPoints, setLoadingPoints] = useState(false)
 
   // ⭐ 篩選用
-  const [sfDistrict, setSfDistrict] = useState('')   // 已揀地區
-  const [sfSearch, setSfSearch] = useState('')        // 搜尋字
+  const [sfDistrict, setSfDistrict] = useState('')
+  const [sfSearch, setSfSearch] = useState('')
 
   const [settings, setSettings] = useState(null)
-  const [shippingFees, setShippingFees] = useState(null)   // ⭐ DB 運費
+  const [shippingFees, setShippingFees] = useState(null)
   const [proofUrl, setProofUrl] = useState('')
-  const [proofPreview, setProofPreview] = useState('')   // ⭐ 本機預覽用
+  const [proofPreview, setProofPreview] = useState('')
   const [uploading, setUploading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone] = useState(false)
@@ -132,13 +119,11 @@ function Checkout() {
   const inputClass =
     'w-full border border-gray-200 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10'
 
-  // 簡稱有意義就用簡稱;否則用地址
   function pointLabel(s) {
     if (s?.name && s.name !== s.code) return s.name
     return s?.address || ''
   }
 
-  // 統一「揀某一點」
   function pickPoint(st) {
     if (!st) { setSelectedPoint(null); setSfStationCode(''); setSfStationName(''); return }
     setSelectedPoint(st)
@@ -166,6 +151,13 @@ function Checkout() {
       .then(({ data }) => setShippingFees(data?.value || null))
   }, [])
 
+  // ⭐ 切換地區時:清空篩選 & 校正派送方式(澳門無自助櫃)
+  useEffect(() => {
+    setSfDistrict('')
+    setSfSearch('')
+    setDeliveryType((dt) => (region === '澳門' && dt === 'sf_locker' ? 'sf_store' : dt))
+  }, [region])
+
   // ⭐ 讀順豐點清單(按派送方式,分批攞晒,無上限)
   useEffect(() => {
     if (deliveryType === 'home') { setSfPoints([]); return }
@@ -190,7 +182,7 @@ function Checkout() {
         if (!data || data.length === 0) break
 
         all = all.concat(data)
-        if (data.length < pageSize) break       // last page
+        if (data.length < pageSize) break
         from += pageSize
       }
 
@@ -202,19 +194,27 @@ function Checkout() {
     setSfStationCode('')
     setSfStationName('')
     setSelectedPoint(null)
-    setSfDistrict('')   // ⭐ 切換派送方式時清空篩選
+    setSfDistrict('')
     setSfSearch('')
   }, [deliveryType])
 
-  // ⭐ 揀地區 / 切換派送方式 → 自動揀該區第一個點
+  // ⭐ 揀地區 / 切換派送方式 / 切換地區 → 自動揀第一個點
+  //    澳門:預設揀氹仔華南工廈(853AA)
   useEffect(() => {
     if (deliveryType === 'home' || loadingPoints) return
-    const list = sfDistrict
-      ? sfPoints.filter((s) => s.district === sfDistrict)
-      : sfPoints
-    pickPoint(list[0] || null)
+    const mo = region === '澳門'
+    const rp = sfPoints.filter((s) => {
+      const macau = (s.district || '').includes('澳門')
+      return mo ? macau : !macau
+    })
+    const base = sfDistrict ? rp.filter((s) => s.district === sfDistrict) : rp
+    if (mo) {
+      pickPoint(base.find((s) => s.code === MO_DEFAULT_STATION) || base[0] || null)
+    } else {
+      pickPoint(base[0] || null)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sfDistrict, deliveryType, loadingPoints, sfPoints])
+  }, [sfDistrict, deliveryType, region, loadingPoints, sfPoints])
 
   if (items.length === 0 && !done) {
     return (
@@ -238,13 +238,22 @@ function Checkout() {
       : shipInfo.fee
   const grandTotal = totalAmount + shippingFee
 
-  // 香港揀順豐點時的派送描述
+  // ⭐ 地區判斷
   const isHK = region === '香港'
+  const isMO = region === '澳門'
   const isLocker = deliveryType === 'sf_locker'
-  const useSFStore = isHK && (deliveryType === 'sf_store' || deliveryType === 'sf_locker')
+  const useSFStore =
+    (isHK && (deliveryType === 'sf_store' || deliveryType === 'sf_locker')) ||
+    (isMO && deliveryType === 'sf_store')
 
-  // ⭐ 所有地區:先去重,再按 香港→九龍→新界 排,同區內按中文排
-  const districts = [...new Set(sfPoints.map((s) => s.district).filter(Boolean))].sort((a, b) => {
+  // ⭐ 按地區隔離順豐點:澳門只顯示澳門站,香港排除澳門站
+  const regionPoints = sfPoints.filter((s) => {
+    const macau = (s.district || '').includes('澳門')
+    return isMO ? macau : !macau
+  })
+
+  // ⭐ 地區去重 + 排序
+  const districts = [...new Set(regionPoints.map((s) => s.district).filter(Boolean))].sort((a, b) => {
     const ra = REGION_ORDER[regionOf(a)] ?? 99
     const rb = REGION_ORDER[regionOf(b)] ?? 99
     if (ra !== rb) return ra - rb
@@ -259,7 +268,7 @@ function Checkout() {
   }, {})
 
   // ⭐ 篩選後嘅點(地區 + 關鍵字)
-  const filteredPoints = sfPoints.filter((s) => {
+  const filteredPoints = regionPoints.filter((s) => {
     if (sfDistrict && s.district !== sfDistrict) return false
     if (sfSearch.trim()) {
       const kw = sfSearch.trim().toLowerCase()
@@ -272,9 +281,8 @@ function Checkout() {
     return true
   })
 
-  // ⭐ 由選單揀點
   function onPickStation(e) {
-    const st = sfPoints.find((s) => s.code === e.target.value)
+    const st = regionPoints.find((s) => s.code === e.target.value)
     pickPoint(st || null)
   }
 
@@ -290,7 +298,7 @@ function Checkout() {
     window.scrollTo(0, 0)
   }
 
-// 上載付款截圖
+  // 上載付款截圖
   async function handleUploadProof(e) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -311,9 +319,8 @@ function Checkout() {
       return
     }
 
-    // ⭐ 只存 path,唔好存 public URL
     setProofUrl(path)
-    setProofPreview(URL.createObjectURL(file))   // ⭐ 本機預覽
+    setProofPreview(URL.createObjectURL(file))
     setUploading(false)
     e.target.value = ''
   }
@@ -323,23 +330,21 @@ function Checkout() {
 
     setSubmitting(true)
 
-    // ⭐ 整理送貨描述(純文字,唔涉及價錢)
     const sfStation = useSFStore
       ? (sfStationName ? `${sfStationName} (${sfStationCode.trim()})` : sfStationCode.trim())
       : null
 
     const pickupLabel = isLocker ? '順豐自助櫃' : '順豐站自取'
-    const shippingMethod = isHK
-      ? (useSFStore ? pickupLabel : '順豐送貨上門')
-      : region === '內地'
-      ? '順豐送貨上門'
-      : '平郵 / 其他快遞'
+    let shippingMethod
+    if (isHK) shippingMethod = useSFStore ? pickupLabel : '順豐送貨上門'
+    else if (isMO) shippingMethod = useSFStore ? '順豐站自取' : '順豐送貨上門'
+    else if (region === '內地') shippingMethod = '順豐送貨上門'
+    else shippingMethod = '平郵 / 其他快遞'
 
     const finalAddress = useSFStore
       ? `${isLocker ? '自助櫃' : '順豐站'}:${sfStation}`
       : address.trim()
 
-    // ⭐ 一次 RPC:server 端計價 + atomic 扣庫存 + 一齊寫入
     const { data, error } = await supabase.rpc('create_order', {
       p_items: items.map((it) => ({
         design_id: it.designId,
@@ -361,7 +366,7 @@ function Checkout() {
 
     if (error) {
       console.error(error)
-      return alert('落單失敗:\n' + error.message)   // 例:庫存不足 / 產品已下架
+      return alert('落單失敗:\n' + error.message)
     }
 
     setDone(true)
@@ -426,12 +431,15 @@ function Checkout() {
                 </span>
               </div>
 
-              {/* 香港:派送方式 */}
-              {isHK && (
+              {/* 香港 / 澳門:派送方式 */}
+              {(isHK || isMO) && (
                 <div>
                   <label className="block text-sm font-medium mb-2">派送方式</label>
-                  <div className="grid grid-cols-3 gap-3">
-                    {[['sf_store', '順豐站自取'], ['sf_locker', '順豐自助櫃'], ['home', '順豐送貨上門']].map(([val, label]) => (
+                  <div className={`grid ${isHK ? 'grid-cols-3' : 'grid-cols-2'} gap-3`}>
+                    {(isHK
+                      ? [['sf_store', '順豐站自取'], ['sf_locker', '順豐自助櫃'], ['home', '順豐送貨上門']]
+                      : [['sf_store', '順豐站自取'], ['home', '順豐送貨上門']]
+                    ).map(([val, label]) => (
                       <button key={val} type="button" onClick={() => setDeliveryType(val)}
                         className={`py-3 rounded-lg border text-sm font-medium transition ${
                           deliveryType === val ? 'border-black bg-black text-white' : 'border-gray-200 hover:border-gray-400'
@@ -443,31 +451,33 @@ function Checkout() {
                 </div>
               )}
 
-              {/* 香港 + 順豐站/自助櫃:篩選 + 揀點 */}
+              {/* 順豐站/自助櫃:篩選 + 揀點 */}
               {useSFStore ? (
                 <div className="space-y-3">
-                  {/* 1️⃣ 地區篩選(按 香港/九龍/新界 分組) */}
-                  <div>
-                    <label className="block text-sm font-medium mb-2">地區</label>
-                    <select
-                      value={sfDistrict}
-                      onChange={(e) => setSfDistrict(e.target.value)}
-                      className={inputClass}
-                    >
-                      <option value="">全部地區</option>
-                      {['香港島', '九龍', '新界', '離島', '其他'].map((r) =>
-                        groupedDistricts[r] ? (
-                          <optgroup key={r} label={r === '香港' ? '香港島' : r}>
-                            {groupedDistricts[r].map((dd) => (
-                              <option key={dd} value={dd}>{dd}</option>
-                            ))}
-                          </optgroup>
-                        ) : null
-                      )}
-                    </select>
-                  </div>
+                  {/* 1️⃣ 地區篩選(澳門只得一兩個站,毋須顯示) */}
+                  {isHK && (
+                    <div>
+                      <label className="block text-sm font-medium mb-2">地區</label>
+                      <select
+                        value={sfDistrict}
+                        onChange={(e) => setSfDistrict(e.target.value)}
+                        className={inputClass}
+                      >
+                        <option value="">全部地區</option>
+                        {['香港島', '九龍', '新界', '離島', '其他'].map((r) =>
+                          groupedDistricts[r] ? (
+                            <optgroup key={r} label={r}>
+                              {groupedDistricts[r].map((dd) => (
+                                <option key={dd} value={dd}>{dd}</option>
+                              ))}
+                            </optgroup>
+                          ) : null
+                        )}
+                      </select>
+                    </div>
+                  )}
 
-                  {/* 2️⃣ 揀點(只顯示 代碼 + 地址) */}
+                  {/* 2️⃣ 揀點 */}
                   <div>
                     <label className="block text-sm font-medium mb-2">
                       揀{isLocker ? '順豐自助櫃' : '順豐站'}
@@ -498,7 +508,7 @@ function Checkout() {
                     )}
                   </div>
 
-                  {/* 3️⃣ 已揀:顯示地址 + 營業/開放時間 */}
+                  {/* 3️⃣ 已揀:顯示地址 + 開放時間 */}
                   {selectedPoint && (
                     <div className="bg-gray-50 border border-gray-100 rounded-lg px-4 py-3 text-sm space-y-1">
                       {selectedPoint.name && selectedPoint.name !== selectedPoint.code && (
@@ -518,18 +528,20 @@ function Checkout() {
                     </div>
                   )}
 
-                  {/* 4️⃣ 搜尋 */}
-                  <div>
-                    <label className="block text-sm font-medium mb-2">
-                      搜尋{isLocker ? '自助櫃' : '順豐站'}
-                    </label>
-                    <input
-                      value={sfSearch}
-                      onChange={(e) => setSfSearch(e.target.value)}
-                      className={inputClass}
-                      placeholder="輸入名稱 / 代碼 / 地址關鍵字"
-                    />
-                  </div>
+                  {/* 4️⃣ 搜尋(澳門站少,毋須顯示) */}
+                  {isHK && (
+                    <div>
+                      <label className="block text-sm font-medium mb-2">
+                        搜尋{isLocker ? '自助櫃' : '順豐站'}
+                      </label>
+                      <input
+                        value={sfSearch}
+                        onChange={(e) => setSfSearch(e.target.value)}
+                        className={inputClass}
+                        placeholder="輸入名稱 / 代碼 / 地址關鍵字"
+                      />
+                    </div>
+                  )}
 
                   {/* 5️⃣ 手動輸入代碼(選填) */}
                   <div>
