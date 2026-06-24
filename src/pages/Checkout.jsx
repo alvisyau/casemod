@@ -23,6 +23,78 @@ const FEE_KEY = {
   其他: 'other_fee',
 }
 
+// ⭐ 三大區固定次序
+const REGION_ORDER = { 香港島: 0, 九龍: 1, 新界: 2, 離島: 3, 其他: 9 }
+
+// ⭐ 各大區嘅地名關鍵字(順豐點多數用呢類細區名)
+const REGION_AREAS = {
+  香港島: [
+    // 中西區
+    '中環', '上環', '西環', '西營盤', '堅尼地城', '石塘咀', '金鐘', '半山', '山頂',
+    '摩星嶺', '薄扶林', '數碼港',
+    // 灣仔區
+    '灣仔', '銅鑼灣', '跑馬地', '大坑', '渣甸山', '掃桿埔', '天后', '炮台山',
+    // 東區
+    '北角', '鰂魚涌', '鰂魚涌', '太古', '西灣河', '筲箕灣', '柴灣', '小西灣',
+    '杏花邨', '康山', '愛秩序灣',
+    // 南區
+    '香港仔', '鴨脷洲', '黃竹坑', '深水灣', '淺水灣', '赤柱', '石澳', '舂坎角',
+    '田灣', '華富', '海洋公園',
+    '港島',
+  ],
+  九龍: [
+    // 油尖旺
+    '尖沙咀', '尖沙嘴', '尖東', '佐敦', '油麻地', '旺角', '太子', '大角咀', '油尖旺',
+    // 深水埗
+    '深水埗', '長沙灣', '荔枝角', '美孚', '石硤尾', '南昌', '又一村', '又一城',
+    '大窩坪', '昂船洲',
+    // 九龍城
+    '九龍城', '九龍塘', '土瓜灣', '紅磡', '何文田', '馬頭角', '馬頭圍', '啟德',
+    '海心', '黃埔', '老龍坑',
+    // 黃大仙
+    '黃大仙', '鑽石山', '新蒲崗', '樂富', '慈雲山', '橫頭磡', '東頭', '竹園',
+    '彩虹', '牛池灣', '牛頭角', '彩雲',
+    // 觀塘
+    '觀塘', '九龍灣', '藍田', '油塘', '秀茂坪', '茶果嶺', '九龍灣', '佐敦谷',
+    '鯉魚門', '坪石',
+    '九龍',
+  ],
+  新界: [
+    // 荃灣 / 葵青
+    '荃灣', '葵涌', '葵芳', '葵興', '青衣', '大窩口', '荔景', '梨木樹', '石圍角',
+    '汀九', '深井', '青龍頭',
+    // 屯門 / 元朗
+    '屯門', '元朗', '天水圍', '洪水橋', '流浮山', '錦田', '錦上路', '八鄉', '十八鄉',
+    '新田', '落馬洲', '屏山', '廈村', '藍地', '掃管笏', '小欖',
+    // 北區
+    '上水', '粉嶺', '北區', '沙頭角', '打鼓嶺', '古洞', '坪輋', '聯和墟', '華明',
+    // 大埔
+    '大埔', '太和', '大尾督', '林村', '汀角', '船灣', '康樂園',
+    // 沙田
+    '沙田', '大圍', '火炭', '馬鞍山', '小瀝源', '石門', '烏溪沙', '第一城',
+    '車公廟', '九肚',
+    // 西貢 / 將軍澳
+    '西貢', '將軍澳', '坑口', '調景嶺', '寶琳', '康城', '清水灣', '蠔涌', '北潭涌',
+    '日出康城',
+    '新界',
+  ],
+  離島: [
+    // 大嶼山 / 離島
+    '東涌', '大嶼山', '梅窩', '愉景灣', '貝澳', '長沙', '塘福', '大澳', '昂坪',
+    '赤鱲角', '赤臘角', '機場', '亞洲國際博覽館',
+    '長洲', '坪洲', '南丫島', '榕樹灣', '索罟灣', '馬灣', '喜靈洲', '蒲台島',
+    '離島',
+  ],
+}
+
+// ⭐ 判斷某個地名屬邊個大區(用關鍵字 substring 配對)
+function regionOf(d = '') {
+  for (const region of ['香港島', '九龍', '新界', '離島']) {
+    if (REGION_AREAS[region].some((kw) => d.includes(kw))) return region
+  }
+  return '其他'
+}
+
 function Checkout() {
   const navigate = useNavigate()
   const { items, totalAmount, clearCart } = useCart()
@@ -39,6 +111,7 @@ function Checkout() {
   const [deliveryType, setDeliveryType] = useState('sf_store') // 香港用:sf_store / sf_locker / home
   const [sfStationCode, setSfStationCode] = useState('')
   const [sfStationName, setSfStationName] = useState('')
+  const [selectedPoint, setSelectedPoint] = useState(null)  // ⭐ 揀中嘅點(全部資料)
 
   // ⭐ 順豐點清單(由 DB 讀)
   const [sfPoints, setSfPoints] = useState([])
@@ -57,6 +130,20 @@ function Checkout() {
 
   const inputClass =
     'w-full border border-gray-200 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10'
+
+  // 簡稱有意義就用簡稱;否則用地址
+  function pointLabel(s) {
+    if (s?.name && s.name !== s.code) return s.name
+    return s?.address || ''
+  }
+
+  // 統一「揀某一點」
+  function pickPoint(st) {
+    if (!st) { setSelectedPoint(null); setSfStationCode(''); setSfStationName(''); return }
+    setSelectedPoint(st)
+    setSfStationCode(st.code)
+    setSfStationName(pointLabel(st))
+  }
 
   // 讀收款設定
   useEffect(() => {
@@ -93,10 +180,10 @@ function Checkout() {
       while (true) {
         const { data, error } = await supabase
           .from('sf_locations')
-          .select('code, name, district, address')
+          .select('code, name, district, address, hours')
           .eq('type', sfType)
           .order('district', { ascending: true })
-          .range(from, from + pageSize - 1)   // ⭐ 分頁
+          .range(from, from + pageSize - 1)
 
         if (error) { console.error('讀取順豐點失敗:', error.message); break }
         if (!data || data.length === 0) break
@@ -113,9 +200,20 @@ function Checkout() {
     loadPoints()
     setSfStationCode('')
     setSfStationName('')
+    setSelectedPoint(null)
     setSfDistrict('')   // ⭐ 切換派送方式時清空篩選
-    setSfSearch('')     // ⭐
+    setSfSearch('')
   }, [deliveryType])
+
+  // ⭐ 揀地區 / 切換派送方式 → 自動揀該區第一個點
+  useEffect(() => {
+    if (deliveryType === 'home' || loadingPoints) return
+    const list = sfDistrict
+      ? sfPoints.filter((s) => s.district === sfDistrict)
+      : sfPoints
+    pickPoint(list[0] || null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sfDistrict, deliveryType, loadingPoints, sfPoints])
 
   if (items.length === 0 && !done) {
     return (
@@ -144,8 +242,20 @@ function Checkout() {
   const isLocker = deliveryType === 'sf_locker'
   const useSFStore = isHK && (deliveryType === 'sf_store' || deliveryType === 'sf_locker')
 
-  // ⭐ 所有地區(去重 + 排序)
-  const districts = [...new Set(sfPoints.map((s) => s.district).filter(Boolean))].sort()
+  // ⭐ 所有地區:先去重,再按 香港→九龍→新界 排,同區內按中文排
+  const districts = [...new Set(sfPoints.map((s) => s.district).filter(Boolean))].sort((a, b) => {
+    const ra = REGION_ORDER[regionOf(a)] ?? 99
+    const rb = REGION_ORDER[regionOf(b)] ?? 99
+    if (ra !== rb) return ra - rb
+    return a.localeCompare(b, 'zh-Hant')
+  })
+
+  // ⭐ 按大區分組(畀 <optgroup> 用)
+  const groupedDistricts = districts.reduce((acc, d) => {
+    const r = regionOf(d)
+    ;(acc[r] = acc[r] || []).push(d)
+    return acc
+  }, {})
 
   // ⭐ 篩選後嘅點(地區 + 關鍵字)
   const filteredPoints = sfPoints.filter((s) => {
@@ -161,14 +271,10 @@ function Checkout() {
     return true
   })
 
+  // ⭐ 由選單揀點
   function onPickStation(e) {
-    const code = e.target.value
-    if (!code) { setSfStationCode(''); setSfStationName(''); return }
-    const st = sfPoints.find((s) => s.code === code)
-    // 優先用地址;地址無就用 name(但 name 同 code 一樣就唔用)
-    const display = st ? (st.address || (st.name !== st.code ? st.name : '')) : ''
-    setSfStationCode(code)
-    setSfStationName(display)
+    const st = sfPoints.find((s) => s.code === e.target.value)
+    pickPoint(st || null)
   }
 
   function goToPayment() {
@@ -381,10 +487,10 @@ function Checkout() {
                 </div>
               )}
 
-              {/* 香港 + 順豐站/自助櫃:篩選 + 揀點 / 輸入代碼 */}
+              {/* 香港 + 順豐站/自助櫃:篩選 + 揀點 */}
               {useSFStore ? (
                 <div className="space-y-3">
-                  {/* 地區篩選 */}
+                  {/* 1️⃣ 地區篩選(按 香港/九龍/新界 分組) */}
                   <div>
                     <label className="block text-sm font-medium mb-2">地區</label>
                     <select
@@ -393,13 +499,70 @@ function Checkout() {
                       className={inputClass}
                     >
                       <option value="">全部地區</option>
-                      {districts.map((dd) => (
-                        <option key={dd} value={dd}>{dd}</option>
-                      ))}
+                      {['香港島', '九龍', '新界', '離島', '其他'].map((r) =>
+                        groupedDistricts[r] ? (
+                          <optgroup key={r} label={r === '香港' ? '香港島' : r}>
+                            {groupedDistricts[r].map((dd) => (
+                              <option key={dd} value={dd}>{dd}</option>
+                            ))}
+                          </optgroup>
+                        ) : null
+                      )}
                     </select>
                   </div>
 
-                  {/* 搜尋 */}
+                  {/* 2️⃣ 揀點(只顯示 代碼 + 地址) */}
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      揀{isLocker ? '順豐自助櫃' : '順豐站'}
+                      {loadingPoints && <span className="text-xs text-gray-400 ml-2">載入緊…</span>}
+                    </label>
+                    <select value={sfStationCode} onChange={onPickStation} className={inputClass}>
+                      <option value="">
+                        {loadingPoints
+                          ? '載入緊…'
+                          : filteredPoints.length === 0
+                          ? '冇符合嘅結果'
+                          : '請選擇…'}
+                      </option>
+                      {filteredPoints.slice(0, 300).map((s) => {
+                        const addr = s.address || (s.name !== s.code ? s.name : '')
+                        const shortAddr = addr.length > 32 ? addr.slice(0, 32) + '…' : addr
+                        return (
+                          <option key={s.code} value={s.code}>
+                            {s.code}{shortAddr ? ` — ${shortAddr}` : ''}
+                          </option>
+                        )
+                      })}
+                    </select>
+                    {filteredPoints.length > 300 && (
+                      <p className="text-xs text-gray-400 mt-1">
+                        結果太多,請揀地區或喺下面輸入關鍵字縮窄範圍。
+                      </p>
+                    )}
+                  </div>
+
+                  {/* 3️⃣ 已揀:顯示地址 + 營業/開放時間 */}
+                  {selectedPoint && (
+                    <div className="bg-gray-50 border border-gray-100 rounded-lg px-4 py-3 text-sm space-y-1">
+                      {selectedPoint.name && selectedPoint.name !== selectedPoint.code && (
+                        <p className="font-medium">{selectedPoint.name}</p>
+                      )}
+                      {selectedPoint.address && (
+                        <p className="text-gray-600">{selectedPoint.address}</p>
+                      )}
+                      <p className="text-gray-400 text-xs">
+                        {selectedPoint.district ? `${selectedPoint.district} · ` : ''}代碼:{selectedPoint.code}
+                      </p>
+                      {selectedPoint.hours && (
+                        <p className="text-gray-500 text-xs pt-1 border-t mt-1">
+                          🕒 {selectedPoint.hours}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 4️⃣ 搜尋 */}
                   <div>
                     <label className="block text-sm font-medium mb-2">
                       搜尋{isLocker ? '自助櫃' : '順豐站'}
@@ -412,50 +575,20 @@ function Checkout() {
                     />
                   </div>
 
-                  {/* 揀點 */}
+                  {/* 5️⃣ 手動輸入代碼(選填) */}
                   <div>
                     <label className="block text-sm font-medium mb-2">
-                      揀{isLocker ? '順豐自助櫃' : '順豐站'}
-                      {loadingPoints && <span className="text-xs text-gray-400 ml-2">載入緊…</span>}
-                    </label>
-                    <select value={sfStationCode} onChange={onPickStation} className={inputClass}>
-                      <option value="">
-                        {loadingPoints
-                          ? '載入緊…'
-                          : filteredPoints.length === 0
-                          ? '冇符合嘅結果'
-                          : '請選擇…(或喺下面自行輸入代碼)'}
-                      </option>
-                      {filteredPoints.slice(0, 300).map((s) => {
-                        // name 同 code 一樣(常見於自助櫃)就用地址做主要描述
-                        const label = s.address || (s.name !== s.code ? s.name : '')
-                        return (
-                          <option key={s.code} value={s.code}>
-                            {s.district ? `[${s.district}] ` : ''}{label ? `${label} — ` : ''}{s.code}
-                          </option>
-                        )
-                      })}
-                    </select>
-                    {filteredPoints.length > 300 && (
-                      <p className="text-xs text-gray-400 mt-1">
-                        結果太多,請揀地區或輸入關鍵字縮窄範圍。
-                      </p>
-                    )}
-                  </div>
-
-                  {/* 代碼(自動填 / 可手動) */}
-                  <div>
-                    <label className="block text-sm font-medium mb-2">
-                      {isLocker ? '自助櫃代碼' : '順豐站代碼'} <span className="text-red-400">*</span>
+                      或自行輸入{isLocker ? '自助櫃' : '順豐站'}代碼
                     </label>
                     <input
                       value={sfStationCode}
-                      onChange={(e) => { setSfStationCode(e.target.value); setSfStationName('') }}
+                      onChange={(e) => {
+                        setSfStationCode(e.target.value)
+                        setSelectedPoint(null)
+                        setSfStationName('')
+                      }}
                       className={inputClass}
                       placeholder="可手動輸入代碼" />
-                    {sfStationName && (
-                      <p className="text-xs text-gray-400 mt-1">已揀:{sfStationName}</p>
-                    )}
                   </div>
                 </div>
               ) : (

@@ -144,6 +144,20 @@ export default function SFImport({ onDone }) {
     rows.forEach((r) => map.set(r.code, r))
     const unique = Array.from(map.values())
 
+    // ⭐ 完全同步:先刪走「今次 CSV 包含嘅 type」嘅舊資料
+    const types = [...new Set(unique.map((r) => r.type))]   // 例如 ['locker'] 或 ['station'] 或兩者都有
+    for (const t of types) {
+      const { error: delErr } = await supabase
+        .from('sf_locations')
+        .delete()
+        .eq('type', t)
+      if (delErr) {
+        setImporting(false)
+        setResult({ ok: false, msg: `清除舊資料失敗(${t}):` + delErr.message })
+        return
+      }
+    }
+
     // 分批 upsert(每 500 筆)
     let inserted = 0
     const chunkSize = 500
@@ -151,7 +165,7 @@ export default function SFImport({ onDone }) {
       const chunk = unique.slice(i, i + chunkSize)
       const { error } = await supabase
         .from('sf_locations')
-        .upsert(chunk, { onConflict: 'code' })   // ⭐ 修正:用 chunk 而唔係 rows
+        .upsert(chunk, { onConflict: 'code' })
       if (error) {
         setImporting(false)
         setResult({ ok: false, msg: '寫入失敗:' + error.message })
@@ -172,7 +186,7 @@ export default function SFImport({ onDone }) {
       return
     }
 
-    const msg = `已匯入 ${inserted} 筆,資料庫現有 ${count} 筆。`
+    const msg = `已完全同步 ${inserted} 筆(類型:${types.join(', ')}),資料庫現有 ${count} 筆。`
     setResult({ ok: true, msg })
     onDone?.({ ok: true, msg, count })
   }
