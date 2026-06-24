@@ -21,20 +21,25 @@ function PhotoEditor({ value, onChange }) {
       scale,
       posX: pos.x,
       posY: pos.y,
+      frameW: FRAME_W,   // ← 新增
+      frameH: FRAME_H,   // ← 新增
       ...next,
     })
   }
 
-  const handleFile = (e) => {
-    const f = e.target.files?.[0]
-    if (!f) return
-    const url = URL.createObjectURL(f)
-    setFile(f)
-    setImgSrc(url)
-    setScale(1)
-    setPos({ x: 0, y: 0 })
-    onChange?.({ file: f, imgSrc: url, scale: 1, posX: 0, posY: 0 })
-  }
+   const handleFile = (e) => {
+  const f = e.target.files?.[0]
+  if (!f) return
+  const url = URL.createObjectURL(f)
+  setFile(f)
+  setImgSrc(url)
+  setScale(1)
+  setPos({ x: 0, y: 0 })
+  onChange?.({
+    file: f, imgSrc: url, scale: 1, posX: 0, posY: 0,
+    frameW: FRAME_W, frameH: FRAME_H,   // ← 新增
+  })
+}
 
   // ---- 拖動 ----
   const startDrag = (clientX, clientY) => {

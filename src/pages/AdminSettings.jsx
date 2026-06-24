@@ -4,6 +4,7 @@ import AdminNav from '../components/AdminNav'
 import ErrorBoundary from '../components/ErrorBoundary'
 import SFImport from '../components/SFImport'
 import PhoneModelManager from '../components/PhoneModelManager'
+import PricingManager from '../components/PricingManager'
 
 
 // 運費預設值(讀唔到 DB 時頂住)
@@ -236,6 +237,15 @@ function AdminSettings() {
           </p>
           <PhoneModelManager />
         </section>
+
+        {/* ⭐ 客製化價目 */}
+<section className="border border-gray-100 rounded-xl p-6 mb-6">
+  <h2 className="font-medium mb-1">客製化價目</h2>
+  <p className="text-xs text-gray-400 mb-4">
+    設定「單殼多片」同「多殼」兩種模式嘅價錢。改完記得撳下面嘅「儲存價目」。
+  </p>
+  <PricingManager />
+</section>
 
         <div className="flex items-center gap-4">
           <button onClick={handleSave} disabled={saving || uploading}

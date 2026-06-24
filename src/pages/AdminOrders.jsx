@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import AdminNav from '../components/AdminNav'
+
 // ⭐ 私有 bucket:即場生成 signed URL 顯示截圖
 function SignedImg({ path, alt, className }) {
   const [url, setUrl] = useState(null)
@@ -18,6 +19,36 @@ function SignedImg({ path, alt, className }) {
   if (!url) return <div className={`${className} bg-gray-100 animate-pulse`} />
   return <img src={url} alt={alt} className={className} />
 }
+
+// ⭐ 客製相片:用落單時嘅構圖數據還原(同 PhotoEditor 同一條公式)
+function CustomPhotoPreview({ url, transform, displayW = 130 }) {
+  const t = transform || {}
+  const frameW = t.frameW || 260
+  const frameH = t.frameH || 540
+  const ratio = displayW / frameW
+
+  if (!url) return <span className="text-gray-400 text-sm">未有相片</span>
+
+  return (
+    <div style={{
+      width: frameW * ratio, height: frameH * ratio,
+      overflow: 'hidden', position: 'relative',
+      borderRadius: 14, border: '2px solid #1f2937', background: '#f3f4f6',
+    }}>
+      <img
+        src={url}
+        alt="客製相片"
+        draggable={false}
+        style={{
+          position: 'absolute', left: '50%', top: '50%',
+          width: frameW * ratio, maxWidth: 'none',
+          transform: `translate(-50%, -50%) translate(${(t.posX || 0) * ratio}px, ${(t.posY || 0) * ratio}px) scale(${t.scale || 1})`,
+        }}
+      />
+    </div>
+  )
+}
+
 const STATUSES = ['待付款', '已付款', '製作中', '已寄出']
 
 const statusStyle = {
@@ -74,7 +105,7 @@ function AdminOrders() {
 
   async function loadOrders() {
     setLoading(true)
-const { data, error } = await supabase
+    const { data, error } = await supabase
       .from('orders')
       .select('*, payments!payments_order_id_fkey(*)')
       .order('created_at', { ascending: false })
@@ -299,6 +330,11 @@ const { data, error } = await supabase
                     <span className={`text-xs px-2 py-0.5 rounded-full border ${statusStyle[o.status] || 'bg-gray-50 text-gray-500 border-gray-200'}`}>
                       {o.status || '—'}
                     </span>
+                    {o.is_custom && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-200">
+                        客製
+                      </span>
+                    )}
                     {o.status === '待付款' && proof && (
                       <span className="text-xs px-2 py-0.5 rounded-full bg-rose-50 text-rose-600 border border-rose-200">
                         待核對
@@ -367,6 +403,33 @@ const { data, error } = await supabase
                       )}
                     </div>
                   </div>
+
+                  {/* ⭐ 客製相片(客人構圖) */}
+                  {o.is_custom && o.custom_photo_url && (
+                    <div className="mb-4">
+                      <p className="text-gray-400 text-xs mb-2">客製相片(客人構圖)</p>
+                      <div className="flex items-start gap-4">
+                        <CustomPhotoPreview
+                          url={o.custom_photo_url}
+                          transform={o.photo_transform}
+                        />
+                        <div className="text-sm space-y-1">
+                          <p className="text-gray-600">{o.product_name || o.case_type}</p>
+                          <p className="text-gray-600">型號:{o.phone_model}</p>
+                          <a href={o.custom_photo_url} target="_blank" rel="noreferrer"
+                            className="inline-block text-blue-600 underline">
+                            下載原圖
+                          </a>
+                          {o.photo_transform && (
+                            <p className="text-xs text-gray-400">
+                              縮放 {(o.photo_transform.scale || 1).toFixed(2)}× ·
+                              位移 {Math.round(o.photo_transform.posX || 0)},{Math.round(o.photo_transform.posY || 0)}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   <p className="text-gray-400 text-xs mb-2">訂單項目</p>
                   <div className="space-y-1">
