@@ -124,6 +124,7 @@ function Checkout() {
   const [settings, setSettings] = useState(null)
   const [shippingFees, setShippingFees] = useState(null)   // ⭐ DB 運費
   const [proofUrl, setProofUrl] = useState('')
+  const [proofPreview, setProofPreview] = useState('')   // ⭐ 本機預覽用
   const [uploading, setUploading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone] = useState(false)
@@ -289,22 +290,30 @@ function Checkout() {
     window.scrollTo(0, 0)
   }
 
+// 上載付款截圖
   async function handleUploadProof(e) {
     const file = e.target.files?.[0]
     if (!file) return
+
     setUploading(true)
+
     const ext = file.name.split('.').pop()
-    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-    const { error: upErr } = await supabase.storage
+    const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+
+    const { error } = await supabase.storage
       .from('payments')
-      .upload(fileName, file, { cacheControl: '3600', upsert: false })
-    if (upErr) {
+      .upload(path, file, { upsert: false })
+
+    if (error) {
+      alert('截圖上載失敗:' + error.message)
       setUploading(false)
-      alert('截圖上載失敗:' + upErr.message)
+      e.target.value = ''
       return
     }
-    const { data } = supabase.storage.from('payments').getPublicUrl(fileName)
-    setProofUrl(data.publicUrl)
+
+    // ⭐ 只存 path,唔好存 public URL
+    setProofUrl(path)
+    setProofPreview(URL.createObjectURL(file))   // ⭐ 本機預覽
     setUploading(false)
     e.target.value = ''
   }
@@ -314,18 +323,7 @@ function Checkout() {
 
     setSubmitting(true)
 
-    const orderId = crypto.randomUUID()
-    const d = new Date()
-    const orderNumber =
-      'CM' +
-      d.getFullYear().toString().slice(2) +
-      String(d.getMonth() + 1).padStart(2, '0') +
-      String(d.getDate()).padStart(2, '0') +
-      Math.floor(1000 + Math.random() * 9000)
-
-    const phoneSummary = items.map((it) => `${it.phoneModel}×${it.quantity}`).join(', ')
-
-    // ⭐ 整理送貨資料
+    // ⭐ 整理送貨描述(純文字,唔涉及價錢)
     const sfStation = useSFStore
       ? (sfStationName ? `${sfStationName} (${sfStationCode.trim()})` : sfStationCode.trim())
       : null
@@ -341,76 +339,34 @@ function Checkout() {
       ? `${isLocker ? '自助櫃' : '順豐站'}:${sfStation}`
       : address.trim()
 
-    // ① orders(單頭)
-    const { error: orderErr } = await supabase.from('orders').insert({
-      id: orderId,
-      order_number: orderNumber,
-      phone_model: phoneSummary,
-      case_type: '現成系列',
-      customer_name: name.trim(),
-      customer_phone: phone.trim(),
-      customer_address: finalAddress,
-      region,
-      shipping_method: shippingMethod,
-      shipping_fee: shippingFee,
-      sf_station: sfStation,
-      currency: 'HKD',
-      amount: grandTotal,
-      payment_method: payMethod,
-      status: '待付款',
-      note: note.trim() || null,
+    // ⭐ 一次 RPC:server 端計價 + atomic 扣庫存 + 一齊寫入
+    const { data, error } = await supabase.rpc('create_order', {
+      p_items: items.map((it) => ({
+        design_id: it.designId,
+        phone_model: it.phoneModel,
+        quantity: it.quantity,
+      })),
+      p_customer_name: name.trim(),
+      p_customer_phone: phone.trim(),
+      p_region: region,
+      p_shipping_method: shippingMethod,
+      p_customer_address: finalAddress,
+      p_sf_station: sfStation,
+      p_payment_method: payMethod,
+      p_proof_url: proofUrl,
+      p_note: note.trim() || null,
     })
-    if (orderErr) {
-      setSubmitting(false)
-      console.error(orderErr)
-      return alert('落單失敗(單頭):\n' + orderErr.message)
-    }
 
-    // ② order_items
-    const itemsPayload = items.map((it) => ({
-      order_id: orderId,
-      design_id: it.designId,
-      design_name: it.designName,
-      collection: it.collection,
-      phone_model: it.phoneModel,
-      unit_price: it.unitPrice,
-      original_price: it.originalPrice ?? null,
-      quantity: it.quantity,
-    }))
-    const { error: itemsErr } = await supabase.from('order_items').insert(itemsPayload)
-    if (itemsErr) {
-      setSubmitting(false)
-      console.error(itemsErr)
-      return alert('落單失敗(項目):\n' + itemsErr.message)
-    }
+    setSubmitting(false)
 
-    // ③ payments
-    const { error: payErr } = await supabase.from('payments').insert({
-      order_id: orderId,
-      method: payMethod,
-      amount: grandTotal,
-      proof_url: proofUrl,
-      status: 'submitted',
-    })
-    if (payErr) {
-      setSubmitting(false)
-      console.error(payErr)
-      return alert('付款記錄寫入失敗:\n' + payErr.message)
-    }
-
-    // ④ 扣庫存
-    for (const it of items) {
-      const { error: stockErr } = await supabase.rpc('decrement_stock', {
-        p_design_id: it.designId,
-        p_qty: it.quantity,
-      })
-      if (stockErr) console.error('扣庫存失敗', it.designId, stockErr.message)
+    if (error) {
+      console.error(error)
+      return alert('落單失敗:\n' + error.message)   // 例:庫存不足 / 產品已下架
     }
 
     setDone(true)
     clearCart()
-    setSubmitting(false)
-    navigate('/order-success', { state: { orderNumber } })
+    navigate('/order-success', { state: { orderNumber: data.order_number } })
   }
 
   const pay = settings || {}
@@ -665,8 +621,8 @@ function Checkout() {
 
                 {proofUrl ? (
                   <div className="relative inline-block">
-                    <img src={proofUrl} alt="付款截圖" className="w-40 rounded-lg border" />
-                    <button onClick={() => setProofUrl('')}
+                    <img src={proofPreview} alt="付款截圖" className="w-40 rounded-lg border" />
+                    <button onClick={() => { setProofUrl(''); setProofPreview('') }}
                       className="absolute top-1 right-1 w-6 h-6 flex items-center justify-center rounded-full bg-white/90 text-gray-600 shadow hover:bg-red-500 hover:text-white transition">
                       ×
                     </button>

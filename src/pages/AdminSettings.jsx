@@ -71,14 +71,14 @@ function AdminSettings() {
     const ext = file.name.split('.').pop()
     const fileName = `qr-${which}-${Date.now()}.${ext}`
     const { error: upErr } = await supabase.storage
-      .from('payments')
+      .from('store-assets')                              // ⭐ 改呢度
       .upload(fileName, file, { cacheControl: '3600', upsert: false })
     if (upErr) {
       setUploading('')
       alert('QR 上載失敗:' + upErr.message)
       return
     }
-    const { data } = supabase.storage.from('payments').getPublicUrl(fileName)
+    const { data } = supabase.storage.from('store-assets').getPublicUrl(fileName)  // ⭐ 改呢度
     update(which === 'fps' ? 'fps_qr_url' : 'payme_qr_url', data.publicUrl)
     setUploading('')
     e.target.value = ''

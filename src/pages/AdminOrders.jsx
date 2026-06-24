@@ -2,7 +2,22 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import AdminNav from '../components/AdminNav'
+// ⭐ 私有 bucket:即場生成 signed URL 顯示截圖
+function SignedImg({ path, alt, className }) {
+  const [url, setUrl] = useState(null)
+  useEffect(() => {
+    if (!path) return
+    let alive = true
+    supabase.storage
+      .from('payments')
+      .createSignedUrl(path, 60 * 10) // 10 分鐘
+      .then(({ data }) => { if (alive && data) setUrl(data.signedUrl) })
+    return () => { alive = false }
+  }, [path])
 
+  if (!url) return <div className={`${className} bg-gray-100 animate-pulse`} />
+  return <img src={url} alt={alt} className={className} />
+}
 const STATUSES = ['待付款', '已付款', '製作中', '已寄出']
 
 const statusStyle = {
@@ -59,9 +74,9 @@ function AdminOrders() {
 
   async function loadOrders() {
     setLoading(true)
-    const { data, error } = await supabase
+const { data, error } = await supabase
       .from('orders')
-      .select('*, payments(*)')
+      .select('*, payments!payments_order_id_fkey(*)')
       .order('created_at', { ascending: false })
     if (error) {
       console.error(error)
@@ -334,7 +349,7 @@ function AdminOrders() {
                         <div className="mt-2">
                           <button onClick={() => setZoomImg(proof)}
                             className="block">
-                            <img src={proof} alt="付款截圖"
+                            <SignedImg path={proof} alt="付款截圖"
                               className="w-32 h-32 object-cover rounded-lg border border-gray-200 hover:opacity-80 transition" />
                           </button>
                           <p className="text-xs text-gray-400 mt-1">撳圖放大</p>
@@ -403,7 +418,7 @@ function AdminOrders() {
       {zoomImg && (
         <div onClick={() => setZoomImg(null)}
           className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 cursor-zoom-out">
-          <img src={zoomImg} alt="付款截圖"
+          <SignedImg path={zoomImg} alt="付款截圖"
             className="max-w-full max-h-full object-contain rounded-lg" />
           <button onClick={() => setZoomImg(null)}
             className="absolute top-4 right-4 w-10 h-10 flex items-center justify-center rounded-full bg-white/90 text-gray-700 text-xl hover:bg-white">
