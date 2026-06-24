@@ -1,0 +1,162 @@
+import { useState, useEffect } from 'react'
+import { supabase } from '../supabaseClient'
+import AdminNav from '../components/AdminNav'   // ⭐ 新 import
+
+function AdminSettings() {
+  const [form, setForm] = useState({
+    fps_phone: '',
+    fps_name: '',
+    fps_qr_url: '',
+    payme_link: '',
+    payme_qr_url: '',
+  })
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState('')   // 'fps' | 'payme' | ''
+  const [saved, setSaved] = useState(false)
+
+  const inputClass =
+    'w-full border border-gray-200 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10'
+
+  // 載入現有設定
+  useEffect(() => {
+    supabase
+      .from('store_settings')
+      .select('value')
+      .eq('key', 'payment')
+      .single()
+      .then(({ data }) => {
+        if (data?.value) setForm((f) => ({ ...f, ...data.value }))
+        setLoading(false)
+      })
+  }, [])
+
+  function update(key, val) {
+    setForm((f) => ({ ...f, [key]: val }))
+    setSaved(false)
+  }
+
+  // 上傳 QR 圖
+  async function handleUploadQR(e, which) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(which)
+    const ext = file.name.split('.').pop()
+    const fileName = `qr-${which}-${Date.now()}.${ext}`
+    const { error: upErr } = await supabase.storage
+      .from('payments')
+      .upload(fileName, file, { cacheControl: '3600', upsert: false })
+    if (upErr) {
+      setUploading('')
+      alert('QR 上載失敗:' + upErr.message)
+      return
+    }
+    const { data } = supabase.storage.from('payments').getPublicUrl(fileName)
+    update(which === 'fps' ? 'fps_qr_url' : 'payme_qr_url', data.publicUrl)
+    setUploading('')
+    e.target.value = ''
+  }
+
+  // 儲存(⭐ 改用 upsert:無論該 row 有冇都搞掂)
+  async function handleSave() {
+    setSaving(true)
+    const { error } = await supabase
+      .from('store_settings')
+      .upsert(
+        { key: 'payment', value: form, updated_at: new Date().toISOString() },
+        { onConflict: 'key' }
+      )
+    setSaving(false)
+    if (error) {
+      console.error(error)
+      return alert('儲存失敗:' + error.message)
+    }
+    setSaved(true)
+  }
+
+  if (loading) {
+    return (
+      <>
+        <AdminNav />
+        <div className="max-w-2xl mx-auto px-4 py-24 text-center text-gray-400">載入緊…</div>
+      </>
+    )
+  }
+
+  return (
+    <>
+      <AdminNav />
+      <div className="max-w-2xl mx-auto px-4 py-12">
+        <h1 className="text-2xl font-bold mb-2">收款設定</h1>
+        <p className="text-sm text-gray-400 mb-8">呢度設定嘅資料會喺客人結帳付款頁顯示。</p>
+
+        {/* FPS */}
+        <section className="border border-gray-100 rounded-xl p-6 mb-6">
+          <h2 className="font-medium mb-4">轉數快 FPS</h2>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">FPS 電話 / ID</label>
+              <input value={form.fps_phone} onChange={(e) => update('fps_phone', e.target.value)}
+                className={inputClass} placeholder="例如 9123 4567 或 FPS ID" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">收款人名稱</label>
+              <input value={form.fps_name} onChange={(e) => update('fps_name', e.target.value)}
+                className={inputClass} placeholder="例如 CHAN TAI MAN" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">FPS QR Code</label>
+              {form.fps_qr_url ? (
+                <div className="relative inline-block">
+                  <img src={form.fps_qr_url} alt="FPS QR" className="w-40 h-40 object-contain border rounded-lg" />
+                  <button onClick={() => update('fps_qr_url', '')}
+                    className="absolute top-1 right-1 w-6 h-6 flex items-center justify-center rounded-full bg-white/90 text-gray-600 shadow hover:bg-red-500 hover:text-white transition">×</button>
+                </div>
+              ) : (
+                <input type="file" accept="image/*" onChange={(e) => handleUploadQR(e, 'fps')}
+                  className="text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:bg-black file:text-white hover:file:bg-gray-800 file:cursor-pointer" />
+              )}
+              {uploading === 'fps' && <p className="text-xs text-gray-400 mt-2">上載緊…</p>}
+            </div>
+          </div>
+        </section>
+
+        {/* PayMe */}
+        <section className="border border-gray-100 rounded-xl p-6 mb-6">
+          <h2 className="font-medium mb-4">PayMe</h2>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">PayMe 連結(PayMe Link)</label>
+              <input value={form.payme_link} onChange={(e) => update('payme_link', e.target.value)}
+                className={inputClass} placeholder="https://payme.hsbc/..." />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">PayMe QR Code</label>
+              {form.payme_qr_url ? (
+                <div className="relative inline-block">
+                  <img src={form.payme_qr_url} alt="PayMe QR" className="w-40 h-40 object-contain border rounded-lg" />
+                  <button onClick={() => update('payme_qr_url', '')}
+                    className="absolute top-1 right-1 w-6 h-6 flex items-center justify-center rounded-full bg-white/90 text-gray-600 shadow hover:bg-red-500 hover:text-white transition">×</button>
+                </div>
+              ) : (
+                <input type="file" accept="image/*" onChange={(e) => handleUploadQR(e, 'payme')}
+                  className="text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:bg-black file:text-white hover:file:bg-gray-800 file:cursor-pointer" />
+              )}
+              {uploading === 'payme' && <p className="text-xs text-gray-400 mt-2">上載緊…</p>}
+            </div>
+          </div>
+        </section>
+
+        <div className="flex items-center gap-4">
+          <button onClick={handleSave} disabled={saving || uploading}
+            className="bg-black text-white px-8 py-3 rounded-lg font-medium hover:bg-gray-800 transition disabled:opacity-50">
+            {saving ? '儲存緊…' : '儲存設定'}
+          </button>
+          {saved && <span className="text-sm text-green-600">✓ 已儲存</span>}
+        </div>
+      </div>
+    </>
+  )
+}
+
+export default AdminSettings

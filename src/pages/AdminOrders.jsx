@@ -52,6 +52,8 @@ function AdminOrders() {
   const [openId, setOpenId] = useState(null)
   const [filter, setFilter] = useState('全部')
   const [exporting, setExporting] = useState(false)
+  const [confirmingId, setConfirmingId] = useState(null)   // ⭐ 確認收款中
+  const [zoomImg, setZoomImg] = useState(null)             // ⭐ 截圖放大
 
   useEffect(() => {
     loadOrders()
@@ -61,7 +63,7 @@ function AdminOrders() {
     setLoading(true)
     const { data, error } = await supabase
       .from('orders')
-      .select('*')
+      .select('*, payments(*)')
       .order('created_at', { ascending: false })
     if (error) {
       console.error(error)
@@ -96,6 +98,31 @@ function AdminOrders() {
       .eq('id', orderId)
     if (error) {
       alert('更新狀態失敗:' + error.message)
+      loadOrders()
+    }
+  }
+
+  // ⭐ 確認收款:待付款 → 已付款,順手把 payments 標記為已核對
+  async function confirmReceipt(orderId, payId) {
+    setConfirmingId(orderId)
+    setOrders((prev) =>
+      prev.map((o) => (o.id === orderId ? { ...o, status: '已付款' } : o))
+    )
+    const { error } = await supabase
+      .from('orders')
+      .update({ status: '已付款' })
+      .eq('id', orderId)
+
+    if (payId) {
+      await supabase
+        .from('payments')
+        .update({ status: 'verified', verified_at: new Date().toISOString() })
+        .eq('id', payId)
+    }
+
+    setConfirmingId(null)
+    if (error) {
+      alert('確認收款失敗:' + error.message)
       loadOrders()
     }
   }
@@ -248,7 +275,10 @@ function AdminOrders() {
         )}
 
         <div className="space-y-3">
-          {shown.map((o) => (
+          {shown.map((o) => {
+            const proof = o.payments?.[0]?.proof_url   // ⭐ 截圖 URL
+            const payId = o.payments?.[0]?.id           // ⭐ payment id
+            return (
             <div key={o.id} className="border border-gray-100 rounded-xl overflow-hidden">
               {/* 單頭一行 */}
               <div className="p-4 flex flex-wrap items-center gap-4">
@@ -259,6 +289,12 @@ function AdminOrders() {
                     <span className={`text-xs px-2 py-0.5 rounded-full border ${statusStyle[o.status] || 'bg-gray-50 text-gray-500 border-gray-200'}`}>
                       {o.status || '—'}
                     </span>
+                    {/* ⭐ 有截圖待核 提示 */}
+                    {o.status === '待付款' && proof && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-rose-50 text-rose-600 border border-rose-200">
+                        待核對
+                      </span>
+                    )}
                   </div>
                   <p className="text-sm text-gray-500 mt-1 truncate">
                     {o.customer_name} · {o.customer_phone} · HK${o.amount}
@@ -289,6 +325,33 @@ function AdminOrders() {
                       <p className="text-gray-600">{o.customer_phone}</p>
                       <p className="text-gray-600">{o.region} · {o.customer_address}</p>
                       {o.note && <p className="text-gray-500 mt-1">備註:{o.note}</p>}
+                    </div>
+
+                    {/* ⭐ 付款資料 + 截圖 */}
+                    <div>
+                      <p className="text-gray-400 text-xs mb-1">付款資料</p>
+                      <p className="text-gray-600">方式:{o.payment_method || '—'}</p>
+                      {proof ? (
+                        <div className="mt-2">
+                          <button onClick={() => setZoomImg(proof)}
+                            className="block">
+                            <img src={proof} alt="付款截圖"
+                              className="w-32 h-32 object-cover rounded-lg border border-gray-200 hover:opacity-80 transition" />
+                          </button>
+                          <p className="text-xs text-gray-400 mt-1">撳圖放大</p>
+                        </div>
+                      ) : (
+                        <p className="text-gray-400 mt-1">未有上傳截圖</p>
+                      )}
+
+                      {/* ⭐ 確認收款掣:只喺待付款先出 */}
+                      {o.status === '待付款' && (
+                        <button onClick={() => confirmReceipt(o.id, payId)}
+                          disabled={confirmingId === o.id}
+                          className="mt-3 bg-green-600 text-white text-sm px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition disabled:opacity-50">
+                          {confirmingId === o.id ? '確認緊…' : '✓ 確認收款'}
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -326,9 +389,23 @@ function AdminOrders() {
                 </div>
               )}
             </div>
-          ))}
+            )
+          })}
         </div>
       </div>
+
+      {/* ⭐ 截圖放大 Lightbox */}
+      {zoomImg && (
+        <div onClick={() => setZoomImg(null)}
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 cursor-zoom-out">
+          <img src={zoomImg} alt="付款截圖"
+            className="max-w-full max-h-full object-contain rounded-lg" />
+          <button onClick={() => setZoomImg(null)}
+            className="absolute top-4 right-4 w-10 h-10 flex items-center justify-center rounded-full bg-white/90 text-gray-700 text-xl hover:bg-white">
+            ×
+          </button>
+        </div>
+      )}
     </>
   )
 }
