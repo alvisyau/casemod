@@ -12,7 +12,6 @@ const statusStyle = {
   已寄出: 'bg-green-50 text-green-700 border-green-200',
 }
 
-// CSV 工具:處理逗號、引號、換行
 function csvCell(val) {
   const s = val == null ? '' : String(val)
   if (/[",\n]/.test(s)) {
@@ -23,7 +22,6 @@ function csvCell(val) {
 
 function downloadCSV(filename, rows) {
   const content = rows.map((r) => r.map(csvCell).join(',')).join('\n')
-  // BOM 令 Excel 正確讀 UTF-8 中文
   const blob = new Blob(['\uFEFF' + content], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -52,8 +50,8 @@ function AdminOrders() {
   const [openId, setOpenId] = useState(null)
   const [filter, setFilter] = useState('全部')
   const [exporting, setExporting] = useState(false)
-  const [confirmingId, setConfirmingId] = useState(null)   // ⭐ 確認收款中
-  const [zoomImg, setZoomImg] = useState(null)             // ⭐ 截圖放大
+  const [confirmingId, setConfirmingId] = useState(null)
+  const [zoomImg, setZoomImg] = useState(null)
 
   useEffect(() => {
     loadOrders()
@@ -102,7 +100,6 @@ function AdminOrders() {
     }
   }
 
-  // ⭐ 確認收款:待付款 → 已付款,順手把 payments 標記為已核對
   async function confirmReceipt(orderId, payId) {
     setConfirmingId(orderId)
     setOrders((prev) =>
@@ -146,13 +143,12 @@ function AdminOrders() {
     }, 0)
   }
 
-  // ⭐ 匯出訂單(單頭,一單一行)— 跟住目前篩選
   function exportOrders() {
     if (shown.length === 0) return alert('冇訂單可匯出')
 
     const header = [
       '訂單編號', '狀態', '客人姓名', '聯絡電話', '地區', '收件地址',
-      '金額(HKD)', '付款方式', '備註', '落單時間',
+      '送貨方式', '順豐站', '運費(HKD)', '金額(HKD)', '付款方式', '備註', '落單時間',
     ]
     const rows = shown.map((o) => [
       o.order_number,
@@ -161,6 +157,9 @@ function AdminOrders() {
       o.customer_phone,
       o.region || '',
       o.customer_address,
+      o.shipping_method || '',
+      o.sf_station || '',
+      o.shipping_fee ?? '',
       o.amount,
       o.payment_method || '',
       o.note || '',
@@ -170,7 +169,6 @@ function AdminOrders() {
     downloadCSV(`訂單_${filter}_${dateStamp()}.csv`, [header, ...rows])
   }
 
-  // ⭐ 匯出明細(逐件,一件一行)— 跟住目前篩選,即時拉 order_items
   async function exportItems() {
     if (shown.length === 0) return alert('冇訂單可匯出')
 
@@ -187,7 +185,6 @@ function AdminOrders() {
         return
       }
 
-      // 用 order_number / 客人資料對返單頭
       const orderMap = {}
       shown.forEach((o) => { orderMap[o.id] = o })
 
@@ -251,7 +248,6 @@ function AdminOrders() {
           </div>
         </div>
 
-        {/* 狀態篩選 */}
         <div className="flex flex-wrap gap-2 mb-2">
           {['全部', ...STATUSES].map((s) => (
             <button key={s} onClick={() => setFilter(s)}
@@ -276,11 +272,10 @@ function AdminOrders() {
 
         <div className="space-y-3">
           {shown.map((o) => {
-            const proof = o.payments?.[0]?.proof_url   // ⭐ 截圖 URL
-            const payId = o.payments?.[0]?.id           // ⭐ payment id
+            const proof = o.payments?.[0]?.proof_url
+            const payId = o.payments?.[0]?.id
             return (
             <div key={o.id} className="border border-gray-100 rounded-xl overflow-hidden">
-              {/* 單頭一行 */}
               <div className="p-4 flex flex-wrap items-center gap-4">
                 <button onClick={() => toggleOpen(o.id)}
                   className="flex-1 min-w-0 text-left">
@@ -289,7 +284,6 @@ function AdminOrders() {
                     <span className={`text-xs px-2 py-0.5 rounded-full border ${statusStyle[o.status] || 'bg-gray-50 text-gray-500 border-gray-200'}`}>
                       {o.status || '—'}
                     </span>
-                    {/* ⭐ 有截圖待核 提示 */}
                     {o.status === '待付款' && proof && (
                       <span className="text-xs px-2 py-0.5 rounded-full bg-rose-50 text-rose-600 border border-rose-200">
                         待核對
@@ -315,7 +309,6 @@ function AdminOrders() {
                 </button>
               </div>
 
-              {/* 展開:明細 + 收件資料 */}
               {openId === o.id && (
                 <div className="border-t border-gray-100 bg-gray-50/50 p-4 text-sm">
                   <div className="grid sm:grid-cols-2 gap-4 mb-4">
@@ -324,10 +317,16 @@ function AdminOrders() {
                       <p>{o.customer_name}</p>
                       <p className="text-gray-600">{o.customer_phone}</p>
                       <p className="text-gray-600">{o.region} · {o.customer_address}</p>
+                      {/* ⭐ 送貨資料 */}
+                      {o.shipping_method && (
+                        <p className="text-gray-600 mt-1">送貨:{o.shipping_method}</p>
+                      )}
+                      {o.sf_station && (
+                        <p className="text-gray-600">順豐站:{o.sf_station}</p>
+                      )}
                       {o.note && <p className="text-gray-500 mt-1">備註:{o.note}</p>}
                     </div>
 
-                    {/* ⭐ 付款資料 + 截圖 */}
                     <div>
                       <p className="text-gray-400 text-xs mb-1">付款資料</p>
                       <p className="text-gray-600">方式:{o.payment_method || '—'}</p>
@@ -344,7 +343,6 @@ function AdminOrders() {
                         <p className="text-gray-400 mt-1">未有上傳截圖</p>
                       )}
 
-                      {/* ⭐ 確認收款掣:只喺待付款先出 */}
                       {o.status === '待付款' && (
                         <button onClick={() => confirmReceipt(o.id, payId)}
                           disabled={confirmingId === o.id}
@@ -375,16 +373,24 @@ function AdminOrders() {
                     {!itemsByOrder[o.id] && <p className="text-gray-400">載入緊…</p>}
                   </div>
 
-                  {orderSaved(o.id) > 0 && (
-                    <div className="border-t border-gray-200 mt-3 pt-2 flex justify-between text-red-500">
-                      <span>特價優惠</span>
-                      <span>− HK${orderSaved(o.id)}</span>
+                  {/* ⭐ 總額區:特價優惠 + 運費 + 總計 */}
+                  <div className="border-t border-gray-200 mt-3 pt-2 space-y-1">
+                    {orderSaved(o.id) > 0 && (
+                      <div className="flex justify-between text-red-500">
+                        <span>特價優惠</span>
+                        <span>− HK${orderSaved(o.id)}</span>
+                      </div>
+                    )}
+                    {o.shipping_fee != null && (
+                      <div className="flex justify-between text-gray-500">
+                        <span>運費{o.shipping_method ? `(${o.shipping_method})` : ''}</span>
+                        <span>{o.shipping_fee > 0 ? `HK$${o.shipping_fee}` : '免費'}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between font-medium">
+                      <span>總計</span>
+                      <span>HK${o.amount}</span>
                     </div>
-                  )}
-
-                  <div className={`${orderSaved(o.id) > 0 ? 'mt-1' : 'border-t border-gray-200 mt-3 pt-2'} flex justify-between font-medium`}>
-                    <span>總計</span>
-                    <span>HK${o.amount}</span>
                   </div>
                 </div>
               )}
@@ -394,7 +400,6 @@ function AdminOrders() {
         </div>
       </div>
 
-      {/* ⭐ 截圖放大 Lightbox */}
       {zoomImg && (
         <div onClick={() => setZoomImg(null)}
           className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 cursor-zoom-out">

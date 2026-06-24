@@ -1,6 +1,17 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabaseClient'
-import AdminNav from '../components/AdminNav'   // ⭐ 新 import
+import AdminNav from '../components/AdminNav'
+import ErrorBoundary from '../components/ErrorBoundary'
+import SFImport from '../components/SFImport'
+
+// 運費預設值(讀唔到 DB 時頂住)
+const DEFAULT_SHIPPING = {
+  hk_fee: 0,
+  cn_fee: 0,
+  mo_fee: 60,
+  tw_fee: 80,
+  other_fee: 150,
+}
 
 function AdminSettings() {
   const [form, setForm] = useState({
@@ -10,6 +21,9 @@ function AdminSettings() {
     payme_link: '',
     payme_qr_url: '',
   })
+  // ⭐ 運費 state(獨立)
+  const [shipping, setShipping] = useState(DEFAULT_SHIPPING)
+
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState('')   // 'fps' | 'payme' | ''
@@ -18,21 +32,34 @@ function AdminSettings() {
   const inputClass =
     'w-full border border-gray-200 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10'
 
-  // 載入現有設定
+  // 載入現有設定(payment + shipping)
   useEffect(() => {
-    supabase
-      .from('store_settings')
-      .select('value')
-      .eq('key', 'payment')
-      .single()
-      .then(({ data }) => {
-        if (data?.value) setForm((f) => ({ ...f, ...data.value }))
-        setLoading(false)
-      })
+    async function load() {
+      const { data } = await supabase
+        .from('store_settings')
+        .select('key, value')
+        .in('key', ['payment', 'shipping'])
+
+      if (data) {
+        const payRow = data.find((r) => r.key === 'payment')
+        const shipRow = data.find((r) => r.key === 'shipping')
+        if (payRow?.value) setForm((f) => ({ ...f, ...payRow.value }))
+        if (shipRow?.value) setShipping((s) => ({ ...s, ...shipRow.value }))
+      }
+      setLoading(false)
+    }
+    load()
   }, [])
 
   function update(key, val) {
     setForm((f) => ({ ...f, [key]: val }))
+    setSaved(false)
+  }
+
+  // ⭐ 更新運費(空白 = 0,只收非負整數)
+  function updateShipping(key, val) {
+    const num = val === '' ? 0 : Math.max(0, parseInt(val, 10) || 0)
+    setShipping((s) => ({ ...s, [key]: num }))
     setSaved(false)
   }
 
@@ -57,13 +84,17 @@ function AdminSettings() {
     e.target.value = ''
   }
 
-  // 儲存(⭐ 改用 upsert:無論該 row 有冇都搞掂)
+  // 儲存(payment + shipping 一齊 upsert)
   async function handleSave() {
     setSaving(true)
+    const now = new Date().toISOString()
     const { error } = await supabase
       .from('store_settings')
       .upsert(
-        { key: 'payment', value: form, updated_at: new Date().toISOString() },
+        [
+          { key: 'payment', value: form, updated_at: now },
+          { key: 'shipping', value: shipping, updated_at: now },
+        ],
         { onConflict: 'key' }
       )
     setSaving(false)
@@ -82,6 +113,15 @@ function AdminSettings() {
       </>
     )
   }
+
+  // 運費欄位設定(方便 render)
+  const shippingFields = [
+    { key: 'hk_fee', label: '香港', hint: '0 = 免運費' },
+    { key: 'cn_fee', label: '中國內地', hint: '0 = 免運費' },
+    { key: 'mo_fee', label: '澳門', hint: '平郵 / 其他快遞' },
+    { key: 'tw_fee', label: '台灣', hint: '平郵 / 其他快遞' },
+    { key: 'other_fee', label: '其他地區', hint: '平郵 / 其他快遞' },
+  ]
 
   return (
     <>
@@ -145,6 +185,45 @@ function AdminSettings() {
               {uploading === 'payme' && <p className="text-xs text-gray-400 mt-2">上載緊…</p>}
             </div>
           </div>
+        </section>
+
+        {/* ⭐ 運費設定 */}
+        <section className="border border-gray-100 rounded-xl p-6 mb-6">
+          <h2 className="font-medium mb-1">運費設定</h2>
+          <p className="text-xs text-gray-400 mb-4">
+            單位 HK$。填 <span className="font-medium">0</span> 即代表免運費(香港 / 內地一般免運)。
+          </p>
+          <div className="space-y-4">
+            {shippingFields.map((f) => (
+              <div key={f.key} className="flex items-center gap-4">
+                <div className="w-24 shrink-0">
+                  <p className="text-sm font-medium">{f.label}</p>
+                  <p className="text-xs text-gray-400">{f.hint}</p>
+                </div>
+                <div className="flex items-center gap-2 flex-1">
+                  <span className="text-sm text-gray-400">HK$</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={shipping[f.key]}
+                    onChange={(e) => updateShipping(f.key, e.target.value)}
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ⭐ 順豐自取點匯入 */}
+        <section className="border border-gray-100 rounded-xl p-6 mb-6">
+          <h2 className="font-medium mb-1">順豐自取點</h2>
+          <p className="text-xs text-gray-400 mb-4">
+            上載順豐站 / 自助櫃 CSV,系統會自動分辨並寫入資料庫。
+          </p>
+          <ErrorBoundary>
+            <SFImport onDone={(res) => console.log(res.msg)} />
+          </ErrorBoundary>
         </section>
 
         <div className="flex items-center gap-4">
