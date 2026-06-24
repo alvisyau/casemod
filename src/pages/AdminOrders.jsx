@@ -1,0 +1,336 @@
+import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { supabase } from '../supabaseClient'
+import AdminNav from '../components/AdminNav'
+
+const STATUSES = ['待付款', '已付款', '製作中', '已寄出']
+
+const statusStyle = {
+  待付款: 'bg-amber-50 text-amber-700 border-amber-200',
+  已付款: 'bg-blue-50 text-blue-700 border-blue-200',
+  製作中: 'bg-purple-50 text-purple-700 border-purple-200',
+  已寄出: 'bg-green-50 text-green-700 border-green-200',
+}
+
+// CSV 工具:處理逗號、引號、換行
+function csvCell(val) {
+  const s = val == null ? '' : String(val)
+  if (/[",\n]/.test(s)) {
+    return `"${s.replace(/"/g, '""')}"`
+  }
+  return s
+}
+
+function downloadCSV(filename, rows) {
+  const content = rows.map((r) => r.map(csvCell).join(',')).join('\n')
+  // BOM 令 Excel 正確讀 UTF-8 中文
+  const blob = new Blob(['\uFEFF' + content], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+function dateStamp() {
+  const d = new Date()
+  return (
+    d.getFullYear() +
+    String(d.getMonth() + 1).padStart(2, '0') +
+    String(d.getDate()).padStart(2, '0')
+  )
+}
+
+function AdminOrders() {
+  const navigate = useNavigate()
+  const [orders, setOrders] = useState([])
+  const [itemsByOrder, setItemsByOrder] = useState({})
+  const [loading, setLoading] = useState(true)
+  const [openId, setOpenId] = useState(null)
+  const [filter, setFilter] = useState('全部')
+  const [exporting, setExporting] = useState(false)
+
+  useEffect(() => {
+    loadOrders()
+  }, [])
+
+  async function loadOrders() {
+    setLoading(true)
+    const { data, error } = await supabase
+      .from('orders')
+      .select('*')
+      .order('created_at', { ascending: false })
+    if (error) {
+      console.error(error)
+      alert('讀取訂單失敗:' + error.message)
+    }
+    setOrders(data || [])
+    setLoading(false)
+  }
+
+  async function toggleOpen(orderId) {
+    if (openId === orderId) {
+      setOpenId(null)
+      return
+    }
+    setOpenId(orderId)
+    if (!itemsByOrder[orderId]) {
+      const { data } = await supabase
+        .from('order_items')
+        .select('*')
+        .eq('order_id', orderId)
+      setItemsByOrder((prev) => ({ ...prev, [orderId]: data || [] }))
+    }
+  }
+
+  async function changeStatus(orderId, newStatus) {
+    setOrders((prev) =>
+      prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o))
+    )
+    const { error } = await supabase
+      .from('orders')
+      .update({ status: newStatus })
+      .eq('id', orderId)
+    if (error) {
+      alert('更新狀態失敗:' + error.message)
+      loadOrders()
+    }
+  }
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    navigate('/admin/login', { replace: true })
+  }
+
+  const shown =
+    filter === '全部' ? orders : orders.filter((o) => o.status === filter)
+
+  function orderSaved(orderId) {
+    const its = itemsByOrder[orderId]
+    if (!its) return 0
+    return its.reduce((sum, it) => {
+      if (it.original_price != null) {
+        return sum + (it.original_price - it.unit_price) * it.quantity
+      }
+      return sum
+    }, 0)
+  }
+
+  // ⭐ 匯出訂單(單頭,一單一行)— 跟住目前篩選
+  function exportOrders() {
+    if (shown.length === 0) return alert('冇訂單可匯出')
+
+    const header = [
+      '訂單編號', '狀態', '客人姓名', '聯絡電話', '地區', '收件地址',
+      '金額(HKD)', '付款方式', '備註', '落單時間',
+    ]
+    const rows = shown.map((o) => [
+      o.order_number,
+      o.status || '',
+      o.customer_name,
+      o.customer_phone,
+      o.region || '',
+      o.customer_address,
+      o.amount,
+      o.payment_method || '',
+      o.note || '',
+      o.created_at ? new Date(o.created_at).toLocaleString('zh-HK') : '',
+    ])
+
+    downloadCSV(`訂單_${filter}_${dateStamp()}.csv`, [header, ...rows])
+  }
+
+  // ⭐ 匯出明細(逐件,一件一行)— 跟住目前篩選,即時拉 order_items
+  async function exportItems() {
+    if (shown.length === 0) return alert('冇訂單可匯出')
+
+    setExporting(true)
+    try {
+      const ids = shown.map((o) => o.id)
+      const { data: items, error } = await supabase
+        .from('order_items')
+        .select('*')
+        .in('order_id', ids)
+
+      if (error) {
+        alert('匯出失敗:' + error.message)
+        return
+      }
+
+      // 用 order_number / 客人資料對返單頭
+      const orderMap = {}
+      shown.forEach((o) => { orderMap[o.id] = o })
+
+      const header = [
+        '訂單編號', '狀態', '客人姓名', '聯絡電話',
+        '產品名稱', '系列', '手機型號', '數量',
+        '單價(HKD)', '原價(HKD)', '小計(HKD)', '落單時間',
+      ]
+
+      const rows = (items || []).map((it) => {
+        const o = orderMap[it.order_id] || {}
+        return [
+          o.order_number || '',
+          o.status || '',
+          o.customer_name || '',
+          o.customer_phone || '',
+          it.design_name,
+          it.collection || '',
+          it.phone_model,
+          it.quantity,
+          it.unit_price,
+          it.original_price ?? '',
+          it.unit_price * it.quantity,
+          o.created_at ? new Date(o.created_at).toLocaleString('zh-HK') : '',
+        ]
+      })
+
+      if (rows.length === 0) {
+        alert('呢批訂單冇明細資料')
+        return
+      }
+
+      downloadCSV(`訂單明細_${filter}_${dateStamp()}.csv`, [header, ...rows])
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  return (
+    <>
+      <AdminNav />
+      <div className="max-w-5xl mx-auto px-4 py-12">
+        <div className="flex items-center justify-between mb-8 gap-4 flex-wrap">
+          <div>
+            <h1 className="text-2xl font-bold">訂單管理</h1>
+            <p className="text-sm text-gray-400 mt-1">共 {orders.length} 張訂單</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={exportOrders}
+              className="text-sm text-gray-700 border border-gray-200 rounded-lg px-4 py-2 hover:bg-gray-50 transition">
+              匯出訂單
+            </button>
+            <button onClick={exportItems} disabled={exporting}
+              className="text-sm text-gray-700 border border-gray-200 rounded-lg px-4 py-2 hover:bg-gray-50 transition disabled:opacity-50">
+              {exporting ? '匯出緊…' : '匯出明細'}
+            </button>
+            <button onClick={handleLogout}
+              className="text-sm text-gray-500 border border-gray-200 rounded-lg px-4 py-2 hover:bg-gray-50 transition">
+              登出
+            </button>
+          </div>
+        </div>
+
+        {/* 狀態篩選 */}
+        <div className="flex flex-wrap gap-2 mb-2">
+          {['全部', ...STATUSES].map((s) => (
+            <button key={s} onClick={() => setFilter(s)}
+              className={`text-sm px-3 py-1.5 rounded-full border transition ${
+                filter === s
+                  ? 'bg-black text-white border-black'
+                  : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+              }`}>
+              {s}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-gray-400 mb-6">
+          匯出會跟住目前篩選(而家:{filter},共 {shown.length} 張)
+        </p>
+
+        {loading && <p className="text-center text-gray-400 py-12">載入緊…</p>}
+
+        {!loading && shown.length === 0 && (
+          <p className="text-center text-gray-400 py-12">未有訂單。</p>
+        )}
+
+        <div className="space-y-3">
+          {shown.map((o) => (
+            <div key={o.id} className="border border-gray-100 rounded-xl overflow-hidden">
+              {/* 單頭一行 */}
+              <div className="p-4 flex flex-wrap items-center gap-4">
+                <button onClick={() => toggleOpen(o.id)}
+                  className="flex-1 min-w-0 text-left">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{o.order_number}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full border ${statusStyle[o.status] || 'bg-gray-50 text-gray-500 border-gray-200'}`}>
+                      {o.status || '—'}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-500 mt-1 truncate">
+                    {o.customer_name} · {o.customer_phone} · HK${o.amount}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {o.created_at ? new Date(o.created_at).toLocaleString('zh-HK') : ''}
+                  </p>
+                </button>
+
+                <select value={o.status || ''} onChange={(e) => changeStatus(o.id, e.target.value)}
+                  className="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black/10">
+                  {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+
+                <button onClick={() => toggleOpen(o.id)}
+                  className="text-sm text-gray-400 hover:text-gray-700">
+                  {openId === o.id ? '收起 ▲' : '明細 ▼'}
+                </button>
+              </div>
+
+              {/* 展開:明細 + 收件資料 */}
+              {openId === o.id && (
+                <div className="border-t border-gray-100 bg-gray-50/50 p-4 text-sm">
+                  <div className="grid sm:grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <p className="text-gray-400 text-xs mb-1">收件資料</p>
+                      <p>{o.customer_name}</p>
+                      <p className="text-gray-600">{o.customer_phone}</p>
+                      <p className="text-gray-600">{o.region} · {o.customer_address}</p>
+                      {o.note && <p className="text-gray-500 mt-1">備註:{o.note}</p>}
+                    </div>
+                  </div>
+
+                  <p className="text-gray-400 text-xs mb-2">訂單項目</p>
+                  <div className="space-y-1">
+                    {(itemsByOrder[o.id] || []).map((it) => (
+                      <div key={it.id} className="flex justify-between">
+                        <span className="text-gray-700">
+                          {it.design_name}
+                          <span className="text-gray-400"> / {it.phone_model} ×{it.quantity}</span>
+                          {it.original_price != null && (
+                            <span className="text-xs text-red-500 ml-1">
+                              特價 HK${it.unit_price}
+                              <span className="line-through text-gray-300 ml-1">HK${it.original_price}</span>
+                            </span>
+                          )}
+                        </span>
+                        <span>HK${it.unit_price * it.quantity}</span>
+                      </div>
+                    ))}
+                    {!itemsByOrder[o.id] && <p className="text-gray-400">載入緊…</p>}
+                  </div>
+
+                  {orderSaved(o.id) > 0 && (
+                    <div className="border-t border-gray-200 mt-3 pt-2 flex justify-between text-red-500">
+                      <span>特價優惠</span>
+                      <span>− HK${orderSaved(o.id)}</span>
+                    </div>
+                  )}
+
+                  <div className={`${orderSaved(o.id) > 0 ? 'mt-1' : 'border-t border-gray-200 mt-3 pt-2'} flex justify-between font-medium`}>
+                    <span>總計</span>
+                    <span>HK${o.amount}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  )
+}
+
+export default AdminOrders
