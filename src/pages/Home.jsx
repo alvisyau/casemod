@@ -17,7 +17,7 @@ function HeroCarousel({ images, placeholder }) {
 
   if (images.length === 0) {
     return (
-      <div className="mt-16 mx-auto max-w-3xl aspect-[16/9] bg-gray-100 rounded-2xl flex items-center justify-center text-gray-300">
+      <div className="mt-16 mx-auto max-w-3xl aspect-[16/9] flex items-center justify-center text-gray-300">
         {placeholder}
       </div>
     )
@@ -25,10 +25,10 @@ function HeroCarousel({ images, placeholder }) {
 
   return (
     <div className="mt-16 mx-auto max-w-3xl">
-      <div className="relative aspect-[16/9] rounded-2xl overflow-hidden bg-gray-100">
+      <div className="relative aspect-[16/9] overflow-hidden">
         {images.map((url, i) => (
           <img key={url} src={url} alt=""
-            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ${
+            className={`absolute inset-0 w-full h-full object-contain transition-opacity duration-1000 ${
               i === idx ? 'opacity-100' : 'opacity-0'
             }`} />
         ))}
@@ -38,7 +38,7 @@ function HeroCarousel({ images, placeholder }) {
             {images.map((_, i) => (
               <button key={i} onClick={() => setIdx(i)}
                 className={`w-2 h-2 rounded-full transition ${
-                  i === idx ? 'bg-white' : 'bg-white/50 hover:bg-white/80'
+                  i === idx ? 'bg-gray-800' : 'bg-gray-300 hover:bg-gray-500'
                 }`} />
             ))}
           </div>
