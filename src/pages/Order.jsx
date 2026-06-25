@@ -366,6 +366,7 @@ function Order() {
   }
 
   // 送出訂單
+  // 送出訂單(改用 RPC:金額一律由後端計,前台唔再傳 amount)
   async function handleSubmit() {
     setSubmitting(true)
     try {
@@ -414,7 +415,7 @@ function Order() {
         }
       }
 
-      // 2️⃣ 送貨描述
+      // 2️⃣ 送貨描述(同舊邏輯)
       const sfStation = useSFStore
         ? (sfStationName ? `${sfStationName} (${sfStationCode.trim()})` : sfStationCode.trim())
         : null
@@ -428,46 +429,32 @@ function Order() {
         ? `${isLocker ? '自助櫃' : '順豐站'}:${sfStation}`
         : address.trim()
 
-      const orderNumber = 'C' + Date.now().toString().slice(-9)
-
-      // 3️⃣ 寫入 orders
-      const { data, error } = await supabase
-        .from('orders')
-        .insert({
-          order_number:     orderNumber,
-          phone_model:      order.phone_model,
-          case_type:        `客製化 — ${modeDesc}`,
-          customer_name:    name.trim(),
-          customer_phone:   phone.trim(),
-          customer_address: finalAddress,
-          currency:         'HKD',
-          amount:           grandTotal,
-          payment_method:   payMethod,
-
-          region,
-          shipping_method:  shippingMethod,
-          shipping_fee:     shippingFee ?? 0,
-          sf_station:       sfStation || null,
-
-          // 客製化
-          is_custom:        true,
-          custom_mode:      order.mode,
-          shell_count:      order.mode === 'B' ? order.shellCount : null,
-          plate_count:      order.mode === 'A' ? order.plateCount : null,
-          custom_plates:    plates,
-          custom_photo_url: coverUrl,
-          photo_transform:  coverTransform,
-          product_id:       null,
-          product_name:     modeDesc,
-
-          note: [note.trim(), proofUrl ? `付款證明:${proofUrl}` : '']
-                  .filter(Boolean).join('\n') || null,
-        })
-        .select('order_number')
-        .single()
+      // 3️⃣ ⭐ 改用 RPC:amount / shipping_fee 由 DB 計,前台改唔到價
+      const { data, error } = await supabase.rpc('create_custom_order', {
+        p_mode:             order.mode,
+        p_phone_model:      order.phone_model,
+        p_plate_count:      order.mode === 'A' ? order.plateCount : null,
+        p_shell_count:      order.mode === 'B' ? order.shellCount : null,
+        p_b_mode:           order.bMode,
+        p_custom_plates:    plates,
+        p_custom_photo_url: coverUrl,
+        p_photo_transform:  coverTransform,
+        p_product_name:     modeDesc,
+        p_case_type:        `客製化 — ${modeDesc}`,
+        p_customer_name:    name.trim(),
+        p_customer_phone:   phone.trim(),
+        p_customer_address: finalAddress,
+        p_region:           region,
+        p_shipping_method:  shippingMethod,
+        p_sf_station:       sfStation || null,
+        p_payment_method:   payMethod,
+        p_proof_url:        proofUrl,
+        p_note:             note.trim() || null,
+      })
 
       if (error) throw error
-      navigate('/order-success', { state: { orderNumber: data?.order_number || orderNumber } })
+      const orderNumber = Array.isArray(data) ? data[0]?.order_number : data?.order_number
+      navigate('/order-success', { state: { orderNumber } })
     } catch (e) {
       console.error(e)
       alert('落單失敗:\n' + e.message)

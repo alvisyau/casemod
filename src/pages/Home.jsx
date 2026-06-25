@@ -1,26 +1,77 @@
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import { useBranding } from '../hooks/useBranding'
+
+// 自動輪播主視覺
+function HeroCarousel({ images }) {
+  const [idx, setIdx] = useState(0)
+
+  useEffect(() => {
+    if (images.length <= 1) return
+    const timer = setInterval(() => {
+      setIdx((i) => (i + 1) % images.length)
+    }, 4000)
+    return () => clearInterval(timer)
+  }, [images.length])
+
+  // 冇相:預設 placeholder
+  if (images.length === 0) {
+    return (
+      <div className="mt-16 mx-auto max-w-3xl aspect-[16/9] bg-gray-100 rounded-2xl flex items-center justify-center text-gray-300">
+        主視覺相片（placeholder）
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-16 mx-auto max-w-3xl">
+      <div className="relative aspect-[16/9] rounded-2xl overflow-hidden bg-gray-100">
+        {images.map((url, i) => (
+          <img key={url} src={url} alt=""
+            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ${
+              i === idx ? 'opacity-100' : 'opacity-0'
+            }`} />
+        ))}
+
+        {/* 小圓點 */}
+        {images.length > 1 && (
+          <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-2">
+            {images.map((_, i) => (
+              <button key={i} onClick={() => setIdx(i)}
+                className={`w-2 h-2 rounded-full transition ${
+                  i === idx ? 'bg-white' : 'bg-white/50 hover:bg-white/80'
+                }`} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 function Home() {
+  const branding = useBranding()
+  const heroImages = Array.isArray(branding?.hero_images) ? branding.hero_images : []
+
   return (
     <div>
       {/* 主視覺 */}
       <section className="max-w-5xl mx-auto px-4 pt-20 pb-24 text-center">
-        <p className="text-sm text-gray-400 tracking-widest uppercase mb-4">Custom Phone Cases</p>
+        <p className="text-sm text-gray-400 tracking-widest uppercase mb-4">Custom Made Phone Cases</p>
         <h1 className="text-4xl sm:text-6xl font-bold tracking-tight leading-tight">
-          將你最愛嘅一刻<br />戴喺身邊
+          CaseMod<br />你的故事 獨一無二
         </h1>
         <p className="mt-6 text-gray-500 max-w-xl mx-auto">
-          上載相片、自由調整構圖，打造獨一無二嘅手機殼。簡約設計，品質之選。
+          上載相片、自由調整構圖，打造獨一無二嘅手機殼。簡約設計，香港製造。
         </p>
         <div className="mt-10">
           <Link to="/order" className="inline-block px-8 py-3 rounded-lg bg-black text-white font-medium hover:bg-gray-800 transition">
             開始設計
           </Link>
         </div>
-        {/* 主視覺 placeholder */}
-        <div className="mt-16 mx-auto max-w-3xl aspect-[16/9] bg-gray-100 rounded-2xl flex items-center justify-center text-gray-300">
-          主視覺相片（placeholder）
-        </div>
+
+        {/* 主視覺輪播 */}
+        <HeroCarousel images={heroImages} />
       </section>
 
       {/* 賣點 */}

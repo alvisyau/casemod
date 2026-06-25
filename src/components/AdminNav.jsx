@@ -12,7 +12,7 @@ function AdminNav() {
         <NavLink to="/admin" end className={cls}>訂單</NavLink>
         <NavLink to="/admin/products" className={cls}>產品</NavLink>
         <NavLink to="/admin/collections" className={cls}>系列</NavLink>
-        <NavLink to="/admin/settings" className={cls}>收款設定</NavLink>
+        <NavLink to="/admin/settings" className={cls}>商店設定</NavLink>
       </div>
     </div>
   )

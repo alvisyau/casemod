@@ -43,6 +43,10 @@ function AdminSettings() {
   })
   const [uploadingBrand, setUploadingBrand] = useState('') // 'header'|'login'|'favicon'
 
+  // ⭐ 首頁主視覺輪播圖
+  const [heroImages, setHeroImages] = useState([])
+  const [uploadingHero, setUploadingHero] = useState(false)
+
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState('')   // 'fps' | 'payme' | ''
@@ -65,7 +69,11 @@ function AdminSettings() {
         const brandRow = data.find((r) => r.key === 'branding')
         if (payRow?.value)   setForm((f) => ({ ...f, ...payRow.value }))
         if (shipRow?.value)  setShipping((s) => ({ ...s, ...shipRow.value }))
-        if (brandRow?.value) setBranding((b) => ({ ...b, ...brandRow.value }))
+        if (brandRow?.value) {
+          const { hero_images, ...rest } = brandRow.value
+          setBranding((b) => ({ ...b, ...rest }))
+          setHeroImages(Array.isArray(hero_images) ? hero_images : [])
+        }
       }
       setLoading(false)
     }
@@ -133,6 +141,49 @@ function AdminSettings() {
     setSaved(false)
   }
 
+  // ⭐ 上傳首頁主視覺(可多張)
+  async function handleUploadHero(e) {
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0) return
+    setUploadingHero(true)
+    const newUrls = []
+    for (const file of files) {
+      const ext = file.name.split('.').pop()
+      const fileName = `hero/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+      const { error } = await supabase.storage
+        .from('store-assets')
+        .upload(fileName, file, { cacheControl: '3600', upsert: false })
+      if (error) {
+        setUploadingHero(false)
+        alert('主視覺上載失敗:' + error.message)
+        return
+      }
+      const { data } = supabase.storage.from('store-assets').getPublicUrl(fileName)
+      newUrls.push(data.publicUrl)
+    }
+    setHeroImages((arr) => [...arr, ...newUrls])
+    setSaved(false)
+    setUploadingHero(false)
+    e.target.value = ''
+  }
+
+  function removeHero(url) {
+    setHeroImages((arr) => arr.filter((u) => u !== url))
+    setSaved(false)
+  }
+
+  // ⭐ 調整主視覺次序
+  function moveHero(idx, dir) {
+    setHeroImages((arr) => {
+      const next = [...arr]
+      const j = idx + dir
+      if (j < 0 || j >= next.length) return next
+      ;[next[idx], next[j]] = [next[j], next[idx]]
+      return next
+    })
+    setSaved(false)
+  }
+
   // 儲存(payment + shipping + branding 一齊 upsert)
   async function handleSave() {
     setSaving(true)
@@ -143,7 +194,7 @@ function AdminSettings() {
         [
           { key: 'payment',  value: form,     updated_at: now },
           { key: 'shipping', value: shipping, updated_at: now },
-          { key: 'branding', value: branding, updated_at: now },
+          { key: 'branding', value: { ...branding, hero_images: heroImages }, updated_at: now },
         ],
         { onConflict: 'key' }
       )
@@ -210,6 +261,45 @@ function AdminSettings() {
               </div>
             ))}
           </div>
+        </section>
+
+        {/* ⭐ 首頁主視覺輪播 */}
+        <section className="border border-gray-100 rounded-xl p-6 mb-6">
+          <h2 className="font-medium mb-1">首頁主視覺(輪播)</h2>
+          <p className="text-xs text-gray-400 mb-4">
+            可上載多張相,首頁會自動輪播。建議用 16:9 橫向靚相(成品相最吸引)。次序由左至右。
+          </p>
+
+          {heroImages.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+              {heroImages.map((url, idx) => (
+                <div key={url} className="relative group">
+                  <div className="aspect-[16/9] rounded-lg overflow-hidden border bg-gray-50">
+                    <img src={url} alt={`主視覺 ${idx + 1}`} className="w-full h-full object-cover" />
+                  </div>
+                  {/* 次序 + 刪除 */}
+                  <div className="absolute inset-x-0 bottom-0 flex items-center justify-between px-1.5 py-1 bg-black/40">
+                    <div className="flex gap-1">
+                      <button onClick={() => moveHero(idx, -1)} disabled={idx === 0}
+                        className="w-6 h-6 flex items-center justify-center rounded bg-white/90 text-gray-700 text-xs disabled:opacity-30 hover:bg-white">←</button>
+                      <button onClick={() => moveHero(idx, 1)} disabled={idx === heroImages.length - 1}
+                        className="w-6 h-6 flex items-center justify-center rounded bg-white/90 text-gray-700 text-xs disabled:opacity-30 hover:bg-white">→</button>
+                    </div>
+                    <span className="text-[10px] text-white">{idx + 1}</span>
+                  </div>
+                  <button onClick={() => removeHero(url)}
+                    className="absolute -top-2 -right-2 w-6 h-6 flex items-center justify-center rounded-full bg-white text-gray-600 shadow border hover:bg-red-500 hover:text-white transition">×</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <input type="file" accept="image/*" multiple onChange={handleUploadHero}
+            className="text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:bg-black file:text-white hover:file:bg-gray-800 file:cursor-pointer" />
+          {uploadingHero && <p className="text-xs text-gray-400 mt-2">上載緊…</p>}
+          {heroImages.length === 0 && (
+            <p className="text-xs text-gray-400 mt-2">未上載任何相,首頁會顯示預設灰底 placeholder。</p>
+          )}
         </section>
 
         {/* FPS */}
