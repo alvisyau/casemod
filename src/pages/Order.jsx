@@ -95,6 +95,7 @@ function Order() {
   // 收件資料
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
   const [address, setAddress] = useState('')
   const [region, setRegion] = useState('香港')
   const [note, setNote] = useState('')
@@ -321,6 +322,8 @@ function Order() {
   function goToConfirm() {
     if (!name.trim()) return alert('請填寫姓名')
     if (!phone.trim()) return alert('請填寫聯絡電話')
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))
+      return alert('電郵格式不正確')
     if (useSFStore) {
       if (!sfStationCode.trim()) return alert(`請揀${isLocker ? '順豐自助櫃' : '順豐站'}或輸入代碼`)
     } else {
@@ -450,6 +453,7 @@ function Order() {
         p_payment_method:   payMethod,
         p_proof_url:        proofUrl,
         p_note:             note.trim() || null,
+        p_customer_email:   email.trim() || null,
       })
 
       if (error) throw error
@@ -670,6 +674,12 @@ function Order() {
           <div>
             <label className="block text-sm font-medium mb-2">聯絡電話 <span className="text-red-400">*</span></label>
             <input value={phone} onChange={(e) => setPhone(e.target.value)} className={inputClass} placeholder="例如 9123 4567" />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-2">電郵(可選,用於接收訂單確認)</label>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+              className={inputClass} placeholder="example@email.com" />
           </div>
 
           <div>
