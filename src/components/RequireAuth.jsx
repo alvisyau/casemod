@@ -3,20 +3,37 @@ import { Navigate } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 
 function RequireAuth({ children }) {
-  const [session, setSession] = useState(undefined) // undefined=查緊, null=冇, object=有
+  const [status, setStatus] = useState('checking') // checking | ok | denied
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session))
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
-    return () => sub.subscription.unsubscribe()
+    let alive = true
+    async function check() {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { if (alive) setStatus('denied'); return }
+
+      // ⭐ 唔單止有 session,仲要係 admin
+      const { data: isAdmin, error } = await supabase.rpc('is_admin')
+      if (!alive) return
+
+      if (error || !isAdmin) {
+        await supabase.auth.signOut()   // 有 session 但唔係 admin → 踢出
+        setStatus('denied')
+      } else {
+        setStatus('ok')
+      }
+    }
+    check()
+    return () => { alive = false }
   }, [])
 
-  if (session === undefined) {
-    return <p className="text-center text-gray-400 py-24">驗證緊…</p>
+  if (status === 'checking') {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-gray-400">
+        驗證中…
+      </div>
+    )
   }
-  if (session === null) {
-    return <Navigate to="/admin/login" replace />
-  }
+  if (status === 'denied') return <Navigate to="/admin/login" replace />
   return children
 }
 

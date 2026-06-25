@@ -11,25 +11,39 @@ function AdminLogin() {
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState('')
 
-  // 已登入就直接入後台
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) navigate('/admin', { replace: true })
-    })
-  }, [navigate])
+// 已登入 + 係 admin 先入後台
+useEffect(() => {
+  supabase.auth.getSession().then(async ({ data }) => {
+    if (!data.session) return
+    const { data: isAdmin } = await supabase.rpc('is_admin')
+    if (isAdmin) navigate('/admin', { replace: true })
+    else await supabase.auth.signOut()
+  })
+}, [navigate])
 
-  async function handleLogin(e) {
-    e.preventDefault()
-    setErr('')
-    setLoading(true)
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+async function handleLogin(e) {
+  e.preventDefault()
+  setErr('')
+  setLoading(true)
+
+  const { error } = await supabase.auth.signInWithPassword({ email, password })
+  if (error) {
     setLoading(false)
-    if (error) {
-      setErr('登入失敗:電郵或密碼不正確')
-      return
-    }
-    navigate('/admin', { replace: true })
+    setErr('登入失敗:電郵或密碼不正確')
+    return
   }
+
+  const { data: isAdmin, error: adminErr } = await supabase.rpc('is_admin')
+  setLoading(false)
+
+  if (adminErr || !isAdmin) {
+    await supabase.auth.signOut()
+    setErr('此帳號沒有後台權限')
+    return
+  }
+
+  navigate('/admin', { replace: true })
+}
 
   const inputClass =
     'w-full border border-gray-200 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10'
