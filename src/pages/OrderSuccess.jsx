@@ -1,7 +1,9 @@
 import { Link, useLocation } from 'react-router-dom'
+import { useLang } from '../context/LanguageContext'
 
 function OrderSuccess() {
   const { state } = useLocation()
+  const { t } = useLang()
   const orderNumber = state?.orderNumber
 
   return (
@@ -12,25 +14,24 @@ function OrderSuccess() {
         </svg>
       </div>
 
-      <h1 className="text-2xl font-bold mt-6">訂單已提交!</h1>
+      <h1 className="text-2xl font-bold mt-6">{t('orderSuccess.title')}</h1>
       {orderNumber && (
         <p className="text-gray-500 mt-3">
-          訂單編號:<span className="font-medium text-gray-800">{orderNumber}</span>
+          {t('orderSuccess.orderNumber')}:<span className="font-medium text-gray-800">{orderNumber}</span>
         </p>
       )}
       <p className="text-gray-500 mt-4 leading-relaxed">
-        我哋已收到你嘅訂單,並會喺 WhatsApp 同你確認付款及製作詳情。<br />
-        如果未自動開啟 WhatsApp,請直接聯絡我哋。
+        {t('orderSuccess.message')}
       </p>
 
       <div className="mt-8 flex gap-3 justify-center">
         <Link to="/collection"
           className="px-6 py-3 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 transition">
-          繼續選購
+          {t('orderSuccess.continueShopping')}
         </Link>
         <Link to="/"
           className="px-6 py-3 bg-black text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition">
-          返回首頁
+          {t('orderSuccess.backHome')}
         </Link>
       </div>
     </div>

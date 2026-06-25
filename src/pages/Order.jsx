@@ -3,17 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import PhotoEditor from '../components/PhotoEditor'
 import PuzzleEditor from '../components/PuzzleEditor'
+import { useLang } from '../context/LanguageContext'
 
-// ⭐ 澳門預設順豐站(氹仔華南工廈)
 const MO_DEFAULT_STATION = '853AA'
 
-// ⭐ 價目預設值(DB 讀到之前頂住)
 const DEFAULT_PRICING = {
   single: { 1: 298, 2: 398, 3: 488, 4: 568, 5: 648, 6: 728, 7: 808, 8: 868, 9: 928 },
   multi: { 1: 298, 2: 478, 3: 628 },
 }
 
-// ⭐ 運費預設值(DB 讀到之前頂住)
 const SHIPPING = {
   香港: { carrier: '順豐速運', fee: 0 },
   內地: { carrier: '順豐速運', fee: 0 },
@@ -71,28 +69,28 @@ function regionOf(d = '') {
   return '其他'
 }
 
+const REGION_LABEL_KEY = { 香港: 'hk', 內地: 'cn', 澳門: 'mo', 台灣: 'tw', 其他: 'other' }
+
 function Order() {
   const navigate = useNavigate()
+  const { t } = useLang()
 
   const [step, setStep] = useState(1)
   const [activeIdx, setActiveIdx] = useState(0)
 
-  // ⭐ 客製化資料
   const [order, setOrder] = useState({
-    mode: null,          // 'A' | 'B'
+    mode: null,
     phone_model: null,
-    plateCount: 1,       // 模式 A:1–9
-    shellCount: 1,       // 模式 B:1–3
-    bMode: 'separate',   // 模式 B:'puzzle' | 'separate'
-    plates: [],          // 模式 A / B-separate:每格一個 photo
-    puzzle: null,        // 模式 B-puzzle
+    plateCount: 1,
+    shellCount: 1,
+    bMode: 'separate',
+    plates: [],
+    puzzle: null,
   })
 
-  // ⭐ 後台資料
   const [phoneModelList, setPhoneModelList] = useState([])
   const [pricing, setPricing] = useState(DEFAULT_PRICING)
 
-  // 收件資料
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
@@ -101,7 +99,6 @@ function Order() {
   const [note, setNote] = useState('')
   const [payMethod, setPayMethod] = useState('FPS')
 
-  // 送貨
   const [deliveryType, setDeliveryType] = useState('sf_store')
   const [sfStationCode, setSfStationCode] = useState('')
   const [sfStationName, setSfStationName] = useState('')
@@ -111,7 +108,6 @@ function Order() {
   const [sfDistrict, setSfDistrict] = useState('')
   const [sfSearch, setSfSearch] = useState('')
 
-  // 設定 / 付款
   const [settings, setSettings] = useState(null)
   const [shippingFees, setShippingFees] = useState(null)
   const [proofUrl, setProofUrl] = useState('')
@@ -122,14 +118,15 @@ function Order() {
   const inputClass =
     'w-full border border-gray-200 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10'
 
-    // ⭐ 折扣碼
-const [discountInput, setDiscountInput] = useState('')
-const [appliedCode, setAppliedCode] = useState('')
-const [discountAmount, setDiscountAmount] = useState(0)
-const [discountError, setDiscountError] = useState('')
-const [applying, setApplying] = useState(false)
+  const [discountInput, setDiscountInput] = useState('')
+  const [appliedCode, setAppliedCode] = useState('')
+  const [discountAmount, setDiscountAmount] = useState(0)
+  const [discountError, setDiscountError] = useState('')
+  const [applying, setApplying] = useState(false)
 
-  // ⭐ 讀手機型號(後台 active)
+  const regionLabel = (r) => t('region.' + (REGION_LABEL_KEY[r] || 'other'))
+  const carrierLabel = (r) => (['香港', '內地', '澳門'].includes(r) ? t('delivery.carrierSF') : t('delivery.carrierOther'))
+
   useEffect(() => {
     supabase
       .from('phone_models')
@@ -139,7 +136,6 @@ const [applying, setApplying] = useState(false)
       .then(({ data }) => setPhoneModelList((data || []).map((m) => m.name)))
   }, [])
 
-  // ⭐ 讀價目
   useEffect(() => {
     supabase
       .from('store_settings').select('value').eq('key', 'pricing').single()
@@ -153,28 +149,24 @@ const [applying, setApplying] = useState(false)
       })
   }, [])
 
-  // 讀收款設定
   useEffect(() => {
     supabase
       .from('store_settings').select('value').eq('key', 'payment').single()
       .then(({ data }) => setSettings(data?.value || {}))
   }, [])
 
-  // 讀運費設定
   useEffect(() => {
     supabase
       .from('store_settings').select('value').eq('key', 'shipping').single()
       .then(({ data }) => setShippingFees(data?.value || null))
   }, [])
 
-  // 切換地區:清空篩選 + 校正派送方式(澳門無自助櫃)
   useEffect(() => {
     setSfDistrict('')
     setSfSearch('')
     setDeliveryType((dt) => (region === '澳門' && dt === 'sf_locker' ? 'sf_store' : dt))
   }, [region])
 
-  // 讀順豐點(分批攞晒)
   useEffect(() => {
     if (deliveryType === 'home') { setSfPoints([]); return }
     const sfType = deliveryType === 'sf_locker' ? 'locker' : 'station'
@@ -222,7 +214,6 @@ const [applying, setApplying] = useState(false)
     (isHK && (deliveryType === 'sf_store' || deliveryType === 'sf_locker')) ||
     (isMO && deliveryType === 'sf_store')
 
-  // 自動揀點(澳門優先 853AA)
   useEffect(() => {
     if (deliveryType === 'home' || loadingPoints) return
     const mo = region === '澳門'
@@ -268,10 +259,9 @@ const [applying, setApplying] = useState(false)
     pickPoint(st || null)
   }
 
-  // ⭐ 客製化衍生值
   const isPuzzle = order.mode === 'B' && order.bMode === 'puzzle'
   const itemCount = order.mode === 'A' ? order.plateCount : order.shellCount
-  const itemLabel = order.mode === 'A' ? '底板' : '手機殼'
+  const itemLabel = order.mode === 'A' ? t('order.plateLabel') : t('order.shellLabel')
 
   const unitPrice =
     order.mode === 'A'
@@ -280,14 +270,22 @@ const [applying, setApplying] = useState(false)
       ? (pricing.multi[order.shellCount] || 0)
       : 0
 
-  const modeDesc =
+  // ⭐ 顯示用(跟語言)
+  const modeDescDisplay =
+    order.mode === 'A'
+      ? t('order.descA').replace('{n}', order.plateCount)
+      : order.mode === 'B'
+      ? (isPuzzle ? t('order.descBPuzzle') : t('order.descBSep')).replace('{n}', order.shellCount)
+      : ''
+
+  // ⭐ 存 DB 用(固定中文,後台一致)
+  const modeDescZh =
     order.mode === 'A'
       ? `單殼 + ${order.plateCount} 片底板`
       : order.mode === 'B'
       ? `${order.shellCount} 個殼${isPuzzle ? '(拼圖大圖)' : '(獨立圖)'}`
       : ''
 
-  // 價錢
   const shipInfo = SHIPPING[region] || SHIPPING['其他']
   const shippingFee =
     shippingFees && shippingFees[FEE_KEY[region]] != null
@@ -295,7 +293,6 @@ const [applying, setApplying] = useState(false)
       : shipInfo.fee
   const grandTotal = Math.max(0, unitPrice - discountAmount) + shippingFee
 
-  // ⭐ 結構性改動時先清空已上載相片(撳返同一選項唔會清)
   function changeStructure(patch) {
     const next = { ...order, ...patch }
     const structureChanged =
@@ -318,7 +315,6 @@ const [applying, setApplying] = useState(false)
     })
   }
 
-  // ⭐ step 2 構圖完成?
   function step2Done() {
     if (order.mode === 'B' && order.bMode === 'puzzle') return !!order.puzzle?.imgSrc
     for (let i = 0; i < itemCount; i++) {
@@ -327,60 +323,57 @@ const [applying, setApplying] = useState(false)
     return itemCount > 0
   }
 
-  // step 1 → 2 驗證
   function goToPhotos() {
-    if (!order.mode) return alert('請揀客製方式')
-    if (!order.phone_model) return alert('請揀手機型號')
+    if (!order.mode) return alert(t('order.alertMode'))
+    if (!order.phone_model) return alert(t('order.alertModel'))
     setStep(2)
     window.scrollTo(0, 0)
   }
 
-  // step 3 → 4 前驗證
   function goToConfirm() {
-    if (!name.trim()) return alert('請填寫姓名')
-    if (!phone.trim()) return alert('請填寫聯絡電話')
+    if (!name.trim()) return alert(t('checkout.alertName'))
+    if (!phone.trim()) return alert(t('checkout.alertPhone'))
     if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))
-      return alert('電郵格式不正確')
+      return alert(t('order.alertEmail'))
     if (useSFStore) {
-      if (!sfStationCode.trim()) return alert(`請揀${isLocker ? '順豐自助櫃' : '順豐站'}或輸入代碼`)
+      if (!sfStationCode.trim()) return alert(isLocker ? t('checkout.alertStationLocker') : t('checkout.alertStationStore'))
     } else {
-      if (!address.trim()) return alert('請填寫收件地址')
+      if (!address.trim()) return alert(t('checkout.alertAddress'))
     }
-    if (!proofUrl) return alert('請先上載付款截圖')
+    if (!proofUrl) return alert(t('order.alertProof'))
     setStep(4)
     window.scrollTo(0, 0)
   }
 
   async function applyDiscount() {
-  const code = discountInput.trim()
-  if (!code) return
-  setApplying(true)
-  setDiscountError('')
-  const { data, error } = await supabase.rpc('apply_discount', {
-    p_code:        code,
-    p_subtotal:    unitPrice,
-    p_phone:       phone.trim(),
-    p_is_custom:   true,
-    p_collections: [],
-  })
-  setApplying(false)
-  if (error) {
-    setAppliedCode(''); setDiscountAmount(0)
-    setDiscountError(error.message || '折扣碼無效')
-    return
+    const code = discountInput.trim()
+    if (!code) return
+    setApplying(true)
+    setDiscountError('')
+    const { data, error } = await supabase.rpc('apply_discount', {
+      p_code: code,
+      p_subtotal: unitPrice,
+      p_phone: phone.trim(),
+      p_is_custom: true,
+      p_collections: [],
+    })
+    setApplying(false)
+    if (error) {
+      setAppliedCode(''); setDiscountAmount(0)
+      setDiscountError(error.message || t('discount.invalid'))
+      return
+    }
+    const row = Array.isArray(data) ? data[0] : data
+    if (!row?.norm_code) { setDiscountError(t('discount.invalid')); return }
+    setAppliedCode(row.norm_code)
+    setDiscountAmount(Number(row.discount) || 0)
   }
-  const row = Array.isArray(data) ? data[0] : data
-  if (!row?.norm_code) { setDiscountError('折扣碼無效'); return }
-  setAppliedCode(row.norm_code)
-  setDiscountAmount(Number(row.discount) || 0)
-}
 
-function clearDiscount() {
-  setAppliedCode(''); setDiscountAmount(0)
-  setDiscountInput(''); setDiscountError('')
-}
+  function clearDiscount() {
+    setAppliedCode(''); setDiscountAmount(0)
+    setDiscountInput(''); setDiscountError('')
+  }
 
-  // 上載付款截圖
   async function handleUploadProof(e) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -389,7 +382,7 @@ function clearDiscount() {
     const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
     const { error } = await supabase.storage.from('payments').upload(path, file, { upsert: false })
     if (error) {
-      alert('截圖上載失敗:' + error.message)
+      alert(t('checkout.uploadFail') + error.message)
       setUploading(false); e.target.value = ''; return
     }
     setProofUrl(path)
@@ -414,12 +407,9 @@ function clearDiscount() {
     return data.publicUrl
   }
 
-  // 送出訂單
-  // 送出訂單(改用 RPC:金額一律由後端計,前台唔再傳 amount)
   async function handleSubmit() {
     setSubmitting(true)
     try {
-      // 1️⃣ 上載客製相片,整理 custom_plates
       let plates = []
       let coverUrl = null
       let coverTransform = null
@@ -452,19 +442,18 @@ function clearDiscount() {
         for (let i = 0; i < itemCount; i++) {
           const ph = order.plates[i]
           const url = await uploadCustomPhoto(ph)
-          const t = {
+          const tr = {
             scale: ph.scale ?? 1,
             posX: ph.posX ?? 0,
             posY: ph.posY ?? 0,
             frameW: ph.frameW ?? 260,
             frameH: ph.frameH ?? 540,
           }
-          plates.push({ index: i + 1, type, custom_photo_url: url, photo_transform: t })
-          if (i === 0) { coverUrl = url; coverTransform = t }
+          plates.push({ index: i + 1, type, custom_photo_url: url, photo_transform: tr })
+          if (i === 0) { coverUrl = url; coverTransform = tr }
         }
       }
 
-      // 2️⃣ 送貨描述(同舊邏輯)
       const sfStation = useSFStore
         ? (sfStationName ? `${sfStationName} (${sfStationCode.trim()})` : sfStationCode.trim())
         : null
@@ -478,7 +467,6 @@ function clearDiscount() {
         ? `${isLocker ? '自助櫃' : '順豐站'}:${sfStation}`
         : address.trim()
 
-      // 3️⃣ ⭐ 改用 RPC:amount / shipping_fee 由 DB 計,前台改唔到價
       const { data, error } = await supabase.rpc('create_custom_order', {
         p_mode:             order.mode,
         p_phone_model:      order.phone_model,
@@ -488,8 +476,8 @@ function clearDiscount() {
         p_custom_plates:    plates,
         p_custom_photo_url: coverUrl,
         p_photo_transform:  coverTransform,
-        p_product_name:     modeDesc,
-        p_case_type:        `客製化 — ${modeDesc}`,
+        p_product_name:     modeDescZh,
+        p_case_type:        `客製化 — ${modeDescZh}`,
         p_customer_name:    name.trim(),
         p_customer_phone:   phone.trim(),
         p_customer_address: finalAddress,
@@ -500,7 +488,7 @@ function clearDiscount() {
         p_proof_url:        proofUrl,
         p_note:             note.trim() || null,
         p_customer_email:   email.trim() || null,
-        p_discount_code:    appliedCode || null,   // ⭐
+        p_discount_code:    appliedCode || null,
       })
 
       if (error) throw error
@@ -508,14 +496,19 @@ function clearDiscount() {
       navigate('/order-success', { state: { orderNumber } })
     } catch (e) {
       console.error(e)
-      alert('落單失敗:\n' + e.message)
+      alert(t('order.orderFail') + e.message)
     } finally {
       setSubmitting(false)
     }
   }
 
   const pay = settings || {}
-  const steps = ['揀客製方式', '上載相片', '填資料', '確認落單']
+  const steps = [t('order.steps0'), t('order.steps1'), t('order.steps2'), t('order.steps3')]
+
+  // 確認頁:派送方式顯示(跟語言)
+  const deliveryDisplay = useSFStore
+    ? (isLocker ? t('delivery.sfLocker') : t('delivery.sfStore'))
+    : (isHK || region === '內地' || isMO ? t('delivery.home') : t('delivery.other'))
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-10">
@@ -537,26 +530,26 @@ function clearDiscount() {
         })}
       </div>
 
-      {/* Step 1:揀客製方式 + 型號 + 數量 */}
+      {/* Step 1 */}
       {step === 1 && (
         <div className="space-y-6">
           <div>
-            <h2 className="text-lg font-bold mb-1">選擇客製方式</h2>
-            <p className="text-sm text-gray-500 mb-4">兩種模式唔可以撈埋一齊。如需混合,請分開落兩張單。</p>
+            <h2 className="text-lg font-bold mb-1">{t('order.chooseMode')}</h2>
+            <p className="text-sm text-gray-500 mb-4">{t('order.modeNote')}</p>
             <div className="grid sm:grid-cols-2 gap-3">
               <button onClick={() => changeStructure({ mode: 'A' })}
                 className={`p-5 rounded-xl border text-left transition ${
                   order.mode === 'A' ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'
                 }`}>
-                <p className="font-medium">單殼多片</p>
-                <p className="text-sm text-gray-500 mt-1">一個殼 + 多片底板,日日換款。</p>
+                <p className="font-medium">{t('order.modeA')}</p>
+                <p className="text-sm text-gray-500 mt-1">{t('order.modeADesc')}</p>
               </button>
               <button onClick={() => changeStructure({ mode: 'B' })}
                 className={`p-5 rounded-xl border text-left transition ${
                   order.mode === 'B' ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'
                 }`}>
-                <p className="font-medium">多殼(情侶 / 家人)</p>
-                <p className="text-sm text-gray-500 mt-1">2–3 個殼拼成大圖,或各自獨立圖。</p>
+                <p className="font-medium">{t('order.modeB')}</p>
+                <p className="text-sm text-gray-500 mt-1">{t('order.modeBDesc')}</p>
               </button>
             </div>
           </div>
@@ -565,11 +558,11 @@ function clearDiscount() {
           {order.mode && (
             <div>
               <h3 className="text-sm font-medium mb-2">
-                手機型號
-                {order.mode === 'B' && <span className="text-gray-400 font-normal"> (全部殼用同一型號)</span>}
+                {t('order.phoneModel')}
+                {order.mode === 'B' && <span className="text-gray-400 font-normal"> {t('order.allSameModel')}</span>}
               </h3>
               {phoneModelList.length === 0 ? (
-                <p className="text-sm text-gray-400">未有型號,請聯絡商家。</p>
+                <p className="text-sm text-gray-400">{t('order.noModels')}</p>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {phoneModelList.map((model) => {
@@ -590,32 +583,32 @@ function clearDiscount() {
           {/* 模式 A:片數 */}
           {order.mode === 'A' && (
             <div>
-              <h3 className="text-sm font-medium mb-2">底板片數(1–9 片)</h3>
+              <h3 className="text-sm font-medium mb-2">{t('order.plateCount')}</h3>
               <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
                 {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
                   <button key={n} onClick={() => changeStructure({ mode: 'A', plateCount: n })}
                     className={`py-3 rounded-lg border text-sm font-medium transition ${
                       order.plateCount === n ? 'border-black bg-black text-white' : 'border-gray-200 hover:border-gray-400'
                     }`}>
-                    {n} 片
+                    {t('order.plateUnit').replace('{n}', n)}
                   </button>
                 ))}
               </div>
             </div>
           )}
 
-          {/* 模式 B:殼數 + 子模式 */}
+          {/* 模式 B */}
           {order.mode === 'B' && (
             <>
               <div>
-                <h3 className="text-sm font-medium mb-2">手機殼數量(1–3 個)</h3>
+                <h3 className="text-sm font-medium mb-2">{t('order.shellCount')}</h3>
                 <div className="grid grid-cols-3 gap-2">
                   {[1, 2, 3].map((n) => (
                     <button key={n} onClick={() => changeStructure({ mode: 'B', shellCount: n, bMode: n === 1 ? 'separate' : order.bMode })}
                       className={`py-3 rounded-lg border text-sm font-medium transition ${
                         order.shellCount === n ? 'border-black bg-black text-white' : 'border-gray-200 hover:border-gray-400'
                       }`}>
-                      {n} 個
+                      {t('order.shellUnit').replace('{n}', n)}
                     </button>
                   ))}
                 </div>
@@ -623,21 +616,21 @@ function clearDiscount() {
 
               {order.shellCount >= 2 && (
                 <div>
-                  <h3 className="text-sm font-medium mb-2">構圖方式</h3>
+                  <h3 className="text-sm font-medium mb-2">{t('order.layoutMode')}</h3>
                   <div className="grid grid-cols-2 gap-3">
                     <button onClick={() => changeStructure({ mode: 'B', bMode: 'puzzle' })}
                       className={`p-4 rounded-lg border text-left text-sm transition ${
                         order.bMode === 'puzzle' ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'
                       }`}>
-                      <p className="font-medium">拼圖大圖</p>
-                      <p className="text-gray-500 mt-1">上載一張大圖,自動切成 {order.shellCount} 份。</p>
+                      <p className="font-medium">{t('order.puzzle')}</p>
+                      <p className="text-gray-500 mt-1">{t('order.puzzleDesc').replace('{n}', order.shellCount)}</p>
                     </button>
                     <button onClick={() => changeStructure({ mode: 'B', bMode: 'separate' })}
                       className={`p-4 rounded-lg border text-left text-sm transition ${
                         order.bMode === 'separate' ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'
                       }`}>
-                      <p className="font-medium">各自獨立圖</p>
-                      <p className="text-gray-500 mt-1">每個殼分別上載一張相。</p>
+                      <p className="font-medium">{t('order.separate')}</p>
+                      <p className="text-gray-500 mt-1">{t('order.separateDesc')}</p>
                     </button>
                   </div>
                 </div>
@@ -648,7 +641,7 @@ function clearDiscount() {
           {/* 價錢提示 */}
           {order.mode && (
             <div className="flex items-center justify-between bg-gray-50 border border-gray-100 rounded-lg px-4 py-3">
-              <span className="text-sm text-gray-600">{modeDesc}</span>
+              <span className="text-sm text-gray-600">{modeDescDisplay}</span>
               <span className="font-bold">HK${unitPrice}</span>
             </div>
           )}
@@ -656,17 +649,17 @@ function clearDiscount() {
           <div className="flex justify-end">
             <button disabled={!order.mode || !order.phone_model} onClick={goToPhotos}
               className="px-6 py-2 rounded-lg bg-black text-white font-medium disabled:bg-gray-300 disabled:cursor-not-allowed">
-              下一步
+              {t('order.next')}
             </button>
           </div>
         </div>
       )}
 
-      {/* Step 2:上載相片 + 構圖 */}
+      {/* Step 2 */}
       {step === 2 && (
         <div>
-          <h2 className="text-lg font-bold mb-1">上載相片並調整構圖</h2>
-          <p className="text-sm text-gray-500 mb-4">{order.phone_model} ／ {modeDesc}</p>
+          <h2 className="text-lg font-bold mb-1">{t('order.uploadTitle')}</h2>
+          <p className="text-sm text-gray-500 mb-4">{order.phone_model} ／ {modeDescDisplay}</p>
 
           {isPuzzle ? (
             <PuzzleEditor
@@ -701,59 +694,59 @@ function clearDiscount() {
           )}
 
           <div className="mt-8 flex justify-between">
-            <button onClick={() => setStep(1)} className="px-6 py-2 rounded-lg border border-gray-300 font-medium">返回</button>
+            <button onClick={() => setStep(1)} className="px-6 py-2 rounded-lg border border-gray-300 font-medium">{t('order.back')}</button>
             <button disabled={!step2Done()} onClick={() => { setStep(3); window.scrollTo(0, 0) }}
-              className="px-6 py-2 rounded-lg bg-black text-white font-medium disabled:bg-gray-300 disabled:cursor-not-allowed">下一步</button>
+              className="px-6 py-2 rounded-lg bg-black text-white font-medium disabled:bg-gray-300 disabled:cursor-not-allowed">{t('order.next')}</button>
           </div>
         </div>
       )}
 
-      {/* Step 3:填資料 + 付款 */}
+      {/* Step 3 */}
       {step === 3 && (
         <div className="space-y-4">
-          <h2 className="text-lg font-bold mb-1">填寫收件資料及付款</h2>
-          <p className="text-sm text-gray-500 mb-2">{order.phone_model} ／ {modeDesc}</p>
+          <h2 className="text-lg font-bold mb-1">{t('order.fillInfo')}</h2>
+          <p className="text-sm text-gray-500 mb-2">{order.phone_model} ／ {modeDescDisplay}</p>
 
           <div>
-            <label className="block text-sm font-medium mb-2">姓名 <span className="text-red-400">*</span></label>
-            <input value={name} onChange={(e) => setName(e.target.value)} className={inputClass} placeholder="收件人姓名" />
+            <label className="block text-sm font-medium mb-2">{t('form.name')} <span className="text-red-400">*</span></label>
+            <input value={name} onChange={(e) => setName(e.target.value)} className={inputClass} placeholder={t('form.namePh')} />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-2">聯絡電話 <span className="text-red-400">*</span></label>
-            <input value={phone} onChange={(e) => setPhone(e.target.value)} className={inputClass} placeholder="例如 9123 4567" />
+            <label className="block text-sm font-medium mb-2">{t('form.phone')} <span className="text-red-400">*</span></label>
+            <input value={phone} onChange={(e) => setPhone(e.target.value)} className={inputClass} placeholder={t('form.phonePh')} />
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2">電郵(可選,用於接收訂單確認)</label>
+            <label className="block text-sm font-medium mb-2">{t('form.email')}</label>
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-              className={inputClass} placeholder="example@email.com" />
+              className={inputClass} placeholder={t('form.emailPh')} />
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2">地區</label>
+            <label className="block text-sm font-medium mb-2">{t('form.region')}</label>
             <select value={region} onChange={(e) => setRegion(e.target.value)} className={inputClass}>
-              <option value="香港">香港</option>
-              <option value="內地">中國內地</option>
-              <option value="澳門">澳門</option>
-              <option value="台灣">台灣</option>
-              <option value="其他">其他</option>
+              <option value="香港">{t('region.hk')}</option>
+              <option value="內地">{t('region.cn')}</option>
+              <option value="澳門">{t('region.mo')}</option>
+              <option value="台灣">{t('region.tw')}</option>
+              <option value="其他">{t('region.other')}</option>
             </select>
           </div>
 
           <div className="flex items-center justify-between text-sm bg-gray-50 border border-gray-100 rounded-lg px-4 py-3">
-            <span className="text-gray-600">物流:{shipInfo.carrier}</span>
+            <span className="text-gray-600">{t('checkout.logistics').replace('{c}', carrierLabel(region))}</span>
             <span className={shippingFee > 0 ? 'text-gray-800 font-medium' : 'text-green-600 font-medium'}>
-              {shippingFee > 0 ? `運費 HK$${shippingFee}` : '免運費'}
+              {shippingFee > 0 ? t('checkout.shippingFee').replace('{n}', shippingFee) : t('checkout.freeShipping')}
             </span>
           </div>
 
           {(isHK || isMO) && (
             <div>
-              <label className="block text-sm font-medium mb-2">派送方式</label>
+              <label className="block text-sm font-medium mb-2">{t('form.deliveryMethod')}</label>
               <div className={`grid ${isHK ? 'grid-cols-3' : 'grid-cols-2'} gap-3`}>
                 {(isHK
-                  ? [['sf_store', '順豐站自取'], ['sf_locker', '順豐自助櫃'], ['home', '順豐送貨上門']]
-                  : [['sf_store', '順豐站自取'], ['home', '順豐送貨上門']]
+                  ? [['sf_store', t('delivery.sfStore')], ['sf_locker', t('delivery.sfLocker')], ['home', t('delivery.home')]]
+                  : [['sf_store', t('delivery.sfStore')], ['home', t('delivery.home')]]
                 ).map(([val, label]) => (
                   <button key={val} type="button" onClick={() => setDeliveryType(val)}
                     className={`py-3 rounded-lg border text-sm font-medium transition ${
@@ -770,9 +763,9 @@ function clearDiscount() {
             <div className="space-y-3">
               {isHK && (
                 <div>
-                  <label className="block text-sm font-medium mb-2">地區</label>
+                  <label className="block text-sm font-medium mb-2">{t('sf.district')}</label>
                   <select value={sfDistrict} onChange={(e) => setSfDistrict(e.target.value)} className={inputClass}>
-                    <option value="">全部地區</option>
+                    <option value="">{t('sf.allDistricts')}</option>
                     {['香港島', '九龍', '新界', '離島', '其他'].map((r) =>
                       groupedDistricts[r] ? (
                         <optgroup key={r} label={r}>
@@ -788,12 +781,12 @@ function clearDiscount() {
 
               <div>
                 <label className="block text-sm font-medium mb-2">
-                  揀{isLocker ? '順豐自助櫃' : '順豐站'}
-                  {loadingPoints && <span className="text-xs text-gray-400 ml-2">載入緊…</span>}
+                  {isLocker ? t('sf.pickLocker') : t('sf.pick')}
+                  {loadingPoints && <span className="text-xs text-gray-400 ml-2">{t('sf.loading')}</span>}
                 </label>
                 <select value={sfStationCode} onChange={onPickStation} className={inputClass}>
                   <option value="">
-                    {loadingPoints ? '載入緊…' : filteredPoints.length === 0 ? '冇符合嘅結果' : '請選擇…'}
+                    {loadingPoints ? t('sf.loading') : filteredPoints.length === 0 ? t('sf.noResult') : t('sf.select')}
                   </option>
                   {filteredPoints.slice(0, 300).map((s) => {
                     const addr = s.address || (s.name !== s.code ? s.name : '')
@@ -806,7 +799,7 @@ function clearDiscount() {
                   })}
                 </select>
                 {filteredPoints.length > 300 && (
-                  <p className="text-xs text-gray-400 mt-1">結果太多,請揀地區或輸入關鍵字縮窄範圍。</p>
+                  <p className="text-xs text-gray-400 mt-1">{t('sf.tooMany')}</p>
                 )}
               </div>
 
@@ -817,7 +810,7 @@ function clearDiscount() {
                   )}
                   {selectedPoint.address && <p className="text-gray-600">{selectedPoint.address}</p>}
                   <p className="text-gray-400 text-xs">
-                    {selectedPoint.district ? `${selectedPoint.district} · ` : ''}代碼:{selectedPoint.code}
+                    {selectedPoint.district ? `${selectedPoint.district} · ` : ''}{t('sf.code')}:{selectedPoint.code}
                   </p>
                   {selectedPoint.hours && (
                     <p className="text-gray-500 text-xs pt-1 border-t mt-1">🕒 {selectedPoint.hours}</p>
@@ -827,66 +820,66 @@ function clearDiscount() {
 
               {isHK && (
                 <div>
-                  <label className="block text-sm font-medium mb-2">搜尋{isLocker ? '自助櫃' : '順豐站'}</label>
+                  <label className="block text-sm font-medium mb-2">{isLocker ? t('sf.searchLocker') : t('sf.search')}</label>
                   <input value={sfSearch} onChange={(e) => setSfSearch(e.target.value)} className={inputClass}
-                    placeholder="輸入名稱 / 代碼 / 地址關鍵字" />
+                    placeholder={t('sf.searchPh')} />
                 </div>
               )}
 
               <div>
-                <label className="block text-sm font-medium mb-2">或自行輸入{isLocker ? '自助櫃' : '順豐站'}代碼</label>
+                <label className="block text-sm font-medium mb-2">{isLocker ? t('sf.manualLocker') : t('sf.manual')}</label>
                 <input value={sfStationCode}
                   onChange={(e) => { setSfStationCode(e.target.value); setSelectedPoint(null); setSfStationName('') }}
-                  className={inputClass} placeholder="可手動輸入代碼" />
+                  className={inputClass} placeholder={t('sf.manualPh')} />
               </div>
             </div>
           ) : (
             <div>
-              <label className="block text-sm font-medium mb-2">收件地址 <span className="text-red-400">*</span></label>
-              <textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={2} className={inputClass} placeholder="詳細收件地址" />
+              <label className="block text-sm font-medium mb-2">{t('form.address')} <span className="text-red-400">*</span></label>
+              <textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={2} className={inputClass} placeholder={t('form.addressPh')} />
             </div>
           )}
 
           <div>
-            <label className="block text-sm font-medium mb-2">備註(可選)</label>
-            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className={inputClass} placeholder="有咩特別要求可以寫喺度" />
+            <label className="block text-sm font-medium mb-2">{t('form.note')}</label>
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className={inputClass} placeholder={t('form.notePh')} />
           </div>
 
           {/* 折扣碼 */}
-<div>
-  <label className="block text-sm font-medium mb-2">折扣碼(可選)</label>
-  {appliedCode ? (
-    <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm">
-      <span className="text-green-700">
-        已套用 <span className="font-semibold">{appliedCode}</span>
-        (折扣 −HK${discountAmount})
-      </span>
-      <button type="button" onClick={clearDiscount}
-        className="text-gray-400 hover:text-red-500 transition text-xs">移除</button>
-    </div>
-  ) : (
-    <div className="flex gap-2">
-      <input value={discountInput}
-        onChange={(e) => { setDiscountInput(e.target.value); setDiscountError('') }}
-        className={inputClass} placeholder="輸入折扣碼" />
-      <button type="button" onClick={applyDiscount} disabled={applying || !discountInput.trim()}
-        className="px-5 rounded-lg bg-black text-white text-sm font-medium disabled:bg-gray-300 whitespace-nowrap">
-        {applying ? '檢查中…' : '套用'}
-      </button>
-    </div>
-  )}
-  {discountError && <p className="text-xs text-red-500 mt-1">{discountError}</p>}
-</div>
+          <div>
+            <label className="block text-sm font-medium mb-2">{t('discount.label')}</label>
+            {appliedCode ? (
+              <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm">
+                <span className="text-green-700">
+                  {t('discount.applied')} <span className="font-semibold">{appliedCode}</span>
+                  ({t('discount.discountOf').replace('{n}', discountAmount)})
+                </span>
+                <button type="button" onClick={clearDiscount}
+                  className="text-gray-400 hover:text-red-500 transition text-xs">{t('discount.remove')}</button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input value={discountInput}
+                  onChange={(e) => { setDiscountInput(e.target.value); setDiscountError('') }}
+                  className={inputClass} placeholder={t('discount.inputPh')} />
+                <button type="button" onClick={applyDiscount} disabled={applying || !discountInput.trim()}
+                  className="px-5 rounded-lg bg-black text-white text-sm font-medium disabled:bg-gray-300 whitespace-nowrap">
+                  {applying ? t('discount.checking') : t('discount.apply')}
+                </button>
+              </div>
+            )}
+            {discountError && <p className="text-xs text-red-500 mt-1">{discountError}</p>}
+          </div>
 
           <div className="pt-2">
-            <label className="block text-sm font-medium mb-2">付款方式</label>
+            <label className="block text-sm font-medium mb-2">{t('pay.method')}</label>
             <div className="grid grid-cols-2 gap-3">
               {['FPS', 'PayMe'].map((m) => (
                 <button key={m} type="button" onClick={() => setPayMethod(m)}
                   className={`py-3 rounded-lg border text-sm font-medium transition ${
                     payMethod === m ? 'border-black bg-black text-white' : 'border-gray-200 hover:border-gray-400'
                   }`}>
-                  {m === 'FPS' ? '轉數快 FPS' : 'PayMe'}
+                  {m === 'FPS' ? t('pay.fps') : t('pay.payme')}
                 </button>
               ))}
             </div>
@@ -894,16 +887,16 @@ function clearDiscount() {
 
           <div className="border border-gray-100 rounded-xl p-5">
             <p className="text-sm text-gray-500 mb-1">
-              請以 <span className="font-medium text-black">{payMethod === 'FPS' ? '轉數快 FPS' : 'PayMe'}</span> 付款
+              {t('pay.payWith').replace('{m}', payMethod === 'FPS' ? t('pay.fps') : t('pay.payme'))}
             </p>
             <p className="text-2xl font-bold mb-4">HK${grandTotal}</p>
             {payMethod === 'FPS' ? (
               <div className="space-y-2 text-sm">
-                {pay.fps_phone && <p>FPS 電話 / ID:<span className="font-medium">{pay.fps_phone}</span></p>}
-                {pay.fps_name && <p>收款人:<span className="font-medium">{pay.fps_name}</span></p>}
+                {pay.fps_phone && <p>{t('pay.fpsId')}:<span className="font-medium">{pay.fps_phone}</span></p>}
+                {pay.fps_name && <p>{t('pay.payee')}:<span className="font-medium">{pay.fps_name}</span></p>}
                 {pay.fps_qr_url && <img src={pay.fps_qr_url} alt="FPS QR" className="w-48 h-48 object-contain border rounded-lg mt-2" />}
                 {!pay.fps_phone && !pay.fps_qr_url && (
-                  <p className="text-amber-600">商家未設定 FPS 收款資料,請用 WhatsApp 聯絡。</p>
+                  <p className="text-amber-600">{t('pay.noFps')}</p>
                 )}
               </div>
             ) : (
@@ -913,18 +906,18 @@ function clearDiscount() {
                 )}
                 {pay.payme_qr_url && <img src={pay.payme_qr_url} alt="PayMe QR" className="w-48 h-48 object-contain border rounded-lg mt-2" />}
                 {!pay.payme_link && !pay.payme_qr_url && (
-                  <p className="text-amber-600">商家未設定 PayMe 收款資料,請用 WhatsApp 聯絡。</p>
+                  <p className="text-amber-600">{t('pay.noPayme')}</p>
                 )}
               </div>
             )}
           </div>
 
           <div className="border border-gray-100 rounded-xl p-5">
-            <p className="text-sm font-medium mb-2">上載付款截圖 <span className="text-red-400">*</span></p>
-            <p className="text-xs text-gray-400 mb-3">過數後請截圖上載,我哋核對後會開始製作。</p>
+            <p className="text-sm font-medium mb-2">{t('pay.uploadProof')} <span className="text-red-400">*</span></p>
+            <p className="text-xs text-gray-400 mb-3">{t('pay.uploadHint')}</p>
             {proofUrl ? (
               <div className="relative inline-block">
-                <img src={proofPreview} alt="付款截圖" className="w-40 rounded-lg border" />
+                <img src={proofPreview} alt="proof" className="w-40 rounded-lg border" />
                 <button onClick={() => { setProofUrl(''); setProofPreview('') }}
                   className="absolute top-1 right-1 w-6 h-6 flex items-center justify-center rounded-full bg-white/90 text-gray-600 shadow hover:bg-red-500 hover:text-white transition">
                   ×
@@ -934,35 +927,34 @@ function clearDiscount() {
               <input type="file" accept="image/*" onChange={handleUploadProof}
                 className="text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:bg-black file:text-white hover:file:bg-gray-800 file:cursor-pointer" />
             )}
-            {uploading && <p className="text-xs text-gray-400 mt-2">上載緊…</p>}
+            {uploading && <p className="text-xs text-gray-400 mt-2">{t('pay.uploading')}</p>}
           </div>
 
           <div className="mt-8 flex justify-between">
-            <button onClick={() => setStep(2)} className="px-6 py-2 rounded-lg border border-gray-300 font-medium">返回</button>
+            <button onClick={() => setStep(2)} className="px-6 py-2 rounded-lg border border-gray-300 font-medium">{t('order.back')}</button>
             <button onClick={goToConfirm}
-              className="px-6 py-2 rounded-lg bg-black text-white font-medium">下一步:確認</button>
+              className="px-6 py-2 rounded-lg bg-black text-white font-medium">{t('order.nextConfirm')}</button>
           </div>
         </div>
       )}
 
-      {/* Step 4:確認落單 */}
+      {/* Step 4 */}
       {step === 4 && (
         <div className="space-y-5">
-          <h2 className="text-lg font-bold">確認訂單</h2>
+          <h2 className="text-lg font-bold">{t('order.confirmTitle')}</h2>
 
-          {/* 客製預覽 */}
           <div className="border border-gray-100 rounded-xl p-5">
             <div className="flex items-center justify-between mb-3">
               <div className="text-sm">
-                <p className="font-medium">{modeDesc}</p>
-                <p className="text-gray-500">型號:{order.phone_model}</p>
+                <p className="font-medium">{modeDescDisplay}</p>
+                <p className="text-gray-500">{t('order.model')}:{order.phone_model}</p>
               </div>
               <span className="font-medium">HK${unitPrice}</span>
             </div>
             <div className="flex gap-2 flex-wrap">
               {isPuzzle ? (
                 order.puzzle?.imgSrc && (
-                  <img src={order.puzzle.imgSrc} alt="拼圖大圖" className="h-20 object-cover rounded-lg border" />
+                  <img src={order.puzzle.imgSrc} alt="puzzle" className="h-20 object-cover rounded-lg border" />
                 )
               ) : (
                 Array.from({ length: itemCount }).map((_, i) => (
@@ -975,45 +967,43 @@ function clearDiscount() {
             </div>
           </div>
 
-          {/* 收件資料 */}
           <div className="border border-gray-100 rounded-xl p-5 text-sm space-y-1">
-            <p><span className="text-gray-500">收件人:</span> {name}</p>
-            <p><span className="text-gray-500">電話:</span> {phone}</p>
-            <p><span className="text-gray-500">地區:</span> {region}</p>
+            <p><span className="text-gray-500">{t('order.recipient')}:</span> {name}</p>
+            <p><span className="text-gray-500">{t('order.phone')}:</span> {phone}</p>
+            <p><span className="text-gray-500">{t('order.region')}:</span> {regionLabel(region)}</p>
             <p>
-              <span className="text-gray-500">派送:</span>{' '}
+              <span className="text-gray-500">{t('order.delivery')}:</span>{' '}
               {useSFStore
-                ? `${isLocker ? '順豐自助櫃' : '順豐站自取'} — ${sfStationName || ''}${sfStationCode ? ` (${sfStationCode})` : ''}`
-                : (isHK || region === '內地' || isMO ? '順豐送貨上門' : '平郵 / 其他快遞') + ` — ${address}`}
+                ? `${deliveryDisplay} — ${sfStationName || ''}${sfStationCode ? ` (${sfStationCode})` : ''}`
+                : `${deliveryDisplay} — ${address}`}
             </p>
-            <p><span className="text-gray-500">付款:</span> {payMethod === 'FPS' ? '轉數快 FPS' : 'PayMe'}</p>
-            {note && <p><span className="text-gray-500">備註:</span> {note}</p>}
+            <p><span className="text-gray-500">{t('order.payment')}:</span> {payMethod === 'FPS' ? t('pay.fps') : t('pay.payme')}</p>
+            {note && <p><span className="text-gray-500">{t('order.note')}:</span> {note}</p>}
           </div>
 
-          {/* 金額 */}
           <div className="border border-gray-100 rounded-xl p-5 text-sm space-y-2">
-            <div className="flex justify-between text-gray-600"><span>商品</span><span>HK${unitPrice}</span></div>
+            <div className="flex justify-between text-gray-600"><span>{t('order.product')}</span><span>HK${unitPrice}</span></div>
             <div className="flex justify-between text-gray-600">
-              <span>運費({shipInfo.carrier})</span>
-                            <span>{shippingFee > 0 ? `HK$${shippingFee}` : <span className="text-green-600">免費</span>}</span>
+              <span>{t('order.shippingItem')}({carrierLabel(region)})</span>
+              <span>{shippingFee > 0 ? `HK$${shippingFee}` : <span className="text-green-600">{t('checkout.free')}</span>}</span>
             </div>
 
             {discountAmount > 0 && (
-  <div className="flex justify-between text-green-600">
-    <span>折扣({appliedCode})</span>
-    <span>− HK${discountAmount}</span>
-  </div>
-)}
-         
-            <div className="flex justify-between font-bold pt-1 border-t"><span>總計</span><span>HK${grandTotal}</span></div>
+              <div className="flex justify-between text-green-600">
+                <span>{t('order.discountItem')}({appliedCode})</span>
+                <span>− HK${discountAmount}</span>
+              </div>
+            )}
+
+            <div className="flex justify-between font-bold pt-1 border-t"><span>{t('order.total')}</span><span>HK${grandTotal}</span></div>
           </div>
 
           <div className="flex justify-between">
             <button onClick={() => setStep(3)} disabled={submitting}
-              className="px-6 py-2 rounded-lg border border-gray-300 font-medium disabled:opacity-50">返回</button>
+              className="px-6 py-2 rounded-lg border border-gray-300 font-medium disabled:opacity-50">{t('order.back')}</button>
             <button onClick={handleSubmit} disabled={submitting || uploading}
               className="px-6 py-2 rounded-lg bg-black text-white font-medium hover:bg-gray-800 transition disabled:opacity-50">
-              {submitting ? '提交緊…' : '確認落單'}
+              {submitting ? t('order.submitting') : t('order.confirmOrder')}
             </button>
           </div>
         </div>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { useCart } from '../context/CartContext'
+import { useLang } from '../context/LanguageContext'
 
 const gradients = [
   'from-gray-200 to-gray-400',
@@ -12,24 +13,23 @@ const gradients = [
   'from-neutral-200 to-neutral-400',
 ]
 
-
 function CollectionDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { addItem } = useCart()
+  const { t } = useLang()
 
   const [design, setDesign] = useState(null)
   const [collection, setCollection] = useState(null)
   const [parent, setParent] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [unavailable, setUnavailable] = useState(false)   // 下架 / 系列隱藏
+  const [unavailable, setUnavailable] = useState(false)
   const [model, setModel] = useState('')
   const [qty, setQty] = useState(1)
   const [added, setAdded] = useState(false)
   const [activeImg, setActiveImg] = useState('')
-  const [modelOrder, setModelOrder] = useState([])        // ⭐ 全局型號順序
+  const [modelOrder, setModelOrder] = useState([])
 
-  // ⭐ 讀取全局手機型號嘅排序
   useEffect(() => {
     supabase
       .from('phone_models')
@@ -51,7 +51,6 @@ function CollectionDetail() {
 
       if (cancelled) return
 
-      // 產品本身下架 → 當搵唔到
       if (!data || data.active === false) {
         setDesign(data || null)
         if (data && data.active === false) setUnavailable(true)
@@ -64,14 +63,12 @@ function CollectionDetail() {
       const imgs = Array.isArray(data.images) ? data.images : []
       setActiveImg(data.image_url || imgs[0] || '')
 
-      // 追溯系列 + 大系列,並檢查可見性
       if (data.collection_id) {
         const { data: c } = await supabase
           .from('collections').select('*').eq('id', data.collection_id).single()
         if (cancelled) return
         setCollection(c || null)
 
-        // 子系列被隱藏 → 唔可見
         if (c && c.active === false) setUnavailable(true)
 
         if (c?.parent_id) {
@@ -79,7 +76,6 @@ function CollectionDetail() {
             .from('collections').select('*').eq('id', c.parent_id).single()
           if (cancelled) return
           setParent(p || null)
-          // 父系列被隱藏 → 唔可見
           if (p && p.active === false) setUnavailable(true)
         } else {
           setParent(null)
@@ -96,19 +92,17 @@ function CollectionDetail() {
     return () => { cancelled = true }
   }, [id])
 
-  if (loading) return <p className="text-center text-gray-400 py-32">載入緊…</p>
+  if (loading) return <p className="text-center text-gray-400 py-32">{t('detail.loading')}</p>
 
-  // 搵唔到 / 下架 / 系列隱藏
   if (!design || unavailable) return (
     <div className="text-center py-32">
-      <p className="text-gray-400">搵唔到呢款設計,或者已下架。</p>
-      <Link to="/collection" className="text-sm underline mt-4 inline-block">返回現成系列</Link>
+      <p className="text-gray-400">{t('detail.notFound')}</p>
+      <Link to="/collection" className="text-sm underline mt-4 inline-block">{t('detail.backToCollection')}</Link>
     </div>
   )
 
   const gradient = gradients[(design.sort_order ?? 1) - 1] || gradients[0]
 
-  // ⭐ 按全局順序排好可選型號
   const availableModels = (() => {
     const arr = Array.isArray(design.phone_models) ? [...design.phone_models] : []
     return arr.sort((a, b) => {
@@ -136,13 +130,13 @@ function CollectionDetail() {
   })()
 
   function handleAdd() {
-    if (soldOut) return                       // ⭐ 缺貨直接擋
-    if (added) return                         // ⭐ 已加入嘅冷靜期內,擋住重複
-    if (!model) return alert('請揀手機型號')
+    if (soldOut) return
+    if (added) return
+    if (!model) return alert(t('detail.pleaseSelectModel'))
     addItem({
       designId: design.id,
       designName: design.name_zh_hk,
-      collection: collectionLabel || '現成系列',
+      collection: collectionLabel || t('detail.defaultCollection'),
       phoneModel: model,
       unitPrice: finalPrice,
       originalPrice: onSale ? design.price_hkd : null,
@@ -158,7 +152,7 @@ function CollectionDetail() {
     <div className="max-w-5xl mx-auto px-4 py-12">
       {/* 麵包屑 */}
       <div className="flex items-center gap-1.5 text-sm text-gray-400 flex-wrap">
-        <Link to="/collection" className="hover:text-gray-700 transition">現成系列</Link>
+        <Link to="/collection" className="hover:text-gray-700 transition">{t('detail.breadcrumb')}</Link>
         {parent && (<><span>/</span><span>{parent.name}</span></>)}
         {collection && (<><span>/</span><span>{collection.name}</span></>)}
         <span>/</span>
@@ -173,13 +167,13 @@ function CollectionDetail() {
               <img src={activeImg} alt={design.name_zh_hk} className="w-full h-full object-cover" />
             ) : (
               <div className={`w-full h-full bg-gradient-to-br ${gradient} flex items-center justify-center`}>
-                <span className="text-xs text-white/70">設計預覽</span>
+                <span className="text-xs text-white/70">{t('detail.preview')}</span>
               </div>
             )}
             <div className="absolute top-4 left-4 w-12 h-12 rounded-2xl border-2 border-white/50" />
             {soldOut && (
               <span className="absolute top-4 right-4 text-xs bg-black/70 text-white px-2.5 py-1 rounded-full">
-                缺貨
+                {t('detail.soldOut')}
               </span>
             )}
           </div>
@@ -220,28 +214,27 @@ function CollectionDetail() {
             <p className="text-gray-500 leading-relaxed mt-5">{design.description}</p>
           )}
 
-          {/* 缺貨提示 */}
           {soldOut && (
             <div className="mt-6 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-4 py-3">
-              呢款設計暫時缺貨,請稍後再嚟睇,或者揀其他設計。
+              {t('detail.soldOutNotice')}
             </div>
           )}
 
           {!soldOut && lowStock && (
-            <p className="mt-4 text-sm text-amber-600">⚡ 僅剩 {design.stock} 件,售完即止</p>
+            <p className="mt-4 text-sm text-amber-600">{t('detail.lowStock').replace('{n}', design.stock)}</p>
           )}
 
           {/* 型號 */}
           <div className="mt-8">
-            <label className="block text-sm font-medium mb-2">手機型號 <span className="text-red-400">*</span></label>
+            <label className="block text-sm font-medium mb-2">{t('detail.phoneModel')} <span className="text-red-400">*</span></label>
             {availableModels.length === 0 ? (
               <p className="text-sm text-gray-400 border border-gray-100 rounded-lg px-4 py-3 bg-gray-50">
-                呢款暫未設定可選型號,請用 WhatsApp 查詢。
+                {t('detail.noModels')}
               </p>
             ) : (
               <select value={model} onChange={(e) => setModel(e.target.value)} disabled={soldOut}
                 className="w-full border border-gray-200 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10 disabled:bg-gray-50 disabled:text-gray-300">
-                <option value="">請選擇…</option>
+                <option value="">{t('detail.selectPlaceholder')}</option>
                 {availableModels.map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
             )}
@@ -249,7 +242,7 @@ function CollectionDetail() {
 
           {/* 數量 */}
           <div className="mt-5">
-            <label className="block text-sm font-medium mb-2">數量</label>
+            <label className="block text-sm font-medium mb-2">{t('detail.quantity')}</label>
             <div className={`inline-flex items-center border border-gray-200 rounded-lg overflow-hidden ${soldOut ? 'opacity-40 pointer-events-none' : ''}`}>
               <button onClick={() => setQty((q) => Math.max(1, q - 1))}
                 className="px-4 py-2 text-lg hover:bg-gray-50">−</button>
@@ -262,18 +255,18 @@ function CollectionDetail() {
           {/* 加入購物車 */}
           <button onClick={handleAdd} disabled={soldOut || added || availableModels.length === 0}
             className="w-full mt-8 bg-black text-white py-4 rounded-lg font-medium hover:bg-gray-800 transition disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed">
-            {soldOut ? '暫時缺貨' : (added ? '✓ 已加入購物車' : '加入購物車')}
+            {soldOut ? t('detail.soldOutBtn') : (added ? t('detail.added') : t('detail.addToCart'))}
           </button>
 
           {added && !soldOut && (
             <button onClick={() => navigate('/cart')}
               className="w-full mt-3 border border-gray-300 py-3 rounded-lg text-sm font-medium hover:bg-gray-50 transition">
-              前往購物車結帳 →
+              {t('detail.goCheckout')}
             </button>
           )}
 
           <p className="text-xs text-gray-400 mt-4 text-center">
-            落單後 3–5 個工作天製作及寄出
+            {t('detail.leadTime')}
           </p>
         </div>
       </div>

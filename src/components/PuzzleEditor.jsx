@@ -1,9 +1,11 @@
 import { useRef, useState } from 'react'
+import { useLang } from '../context/LanguageContext'
 
 const FRAME_W = 180
 const FRAME_H = 380
 
 function PuzzleEditor({ count = 2, value, onChange }) {
+  const { t } = useLang()
   const [imgSrc, setImgSrc] = useState(value?.imgSrc || null)
   const [file, setFile] = useState(value?.file || null)
   const [scale, setScale] = useState(value?.scale || 1)
@@ -32,7 +34,6 @@ function PuzzleEditor({ count = 2, value, onChange }) {
     const img = new Image()
     img.onload = () => {
       const ratio = img.width / img.height
-      // cover:確保大圖至少蓋滿總框高度
       const s = Math.max(1, (FRAME_H * ratio) / totalW)
       const init = Array.from({ length: count }, () => ({ dx: 0, dy: 0 }))
       setFile(f); setImgSrc(url); setScale(s); setOffsets(init)
@@ -72,8 +73,8 @@ function PuzzleEditor({ count = 2, value, onChange }) {
     <div className="flex flex-col items-center">
       {!imgSrc && (
         <label className="cursor-pointer border-2 border-dashed border-gray-300 rounded-lg px-8 py-12 text-center hover:border-gray-500 transition">
-          <p className="text-gray-600 font-medium">點此上載一張大圖</p>
-          <p className="text-xs text-gray-400 mt-1">系統會自動橫切成 {count} 格</p>
+          <p className="text-gray-600 font-medium">{t('editor.uploadBig')}</p>
+          <p className="text-xs text-gray-400 mt-1">{t('editor.autoSlice').replace('{n}', count)}</p>
           <input type="file" accept="image/*" className="hidden" onChange={handleFile} />
         </label>
       )}
@@ -115,32 +116,32 @@ function PuzzleEditor({ count = 2, value, onChange }) {
                       />
                     </div>
                     <span className="absolute top-1.5 left-1.5 text-[10px] bg-black/60 text-white px-1.5 py-0.5 rounded">
-                      殼 {i + 1}
+                      {t('editor.shell').replace('{n}', i + 1)}
                     </span>
                   </div>
-                  <span className="text-xs text-gray-400 mt-1">拖動微調</span>
+                  <span className="text-xs text-gray-400 mt-1">{t('editor.dragAdjust')}</span>
                 </div>
               ))}
             </div>
           </div>
 
           <div className="w-full max-w-xs mt-4">
-            <label className="text-sm text-gray-600">整體縮放</label>
+            <label className="text-sm text-gray-600">{t('editor.overallScale')}</label>
             <input type="range" min="0.5" max="3" step="0.01" value={scale}
               onChange={(e) => onScale(parseFloat(e.target.value))} className="w-full" />
           </div>
 
           <div className="flex gap-4 mt-2">
             <button type="button" onClick={resetOffsets}
-              className="text-sm text-gray-500 underline">重設對齊</button>
+              className="text-sm text-gray-500 underline">{t('editor.resetAlign')}</button>
             <label className="cursor-pointer text-sm text-blue-600 underline">
-              更換大圖
+              {t('editor.changeBig')}
               <input type="file" accept="image/*" className="hidden" onChange={handleFile} />
             </label>
           </div>
 
           <p className="text-xs text-gray-400 mt-2 text-center">
-            大圖已自動切成 {count} 份,每格可獨立拖動對齊,整體用拉桿調大小。
+            {t('editor.puzzleHint').replace('{n}', count)}
           </p>
         </>
       )}
