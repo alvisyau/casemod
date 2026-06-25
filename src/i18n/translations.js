@@ -17,7 +17,7 @@ export const translations = {
       startDesign: '開始設計', heroPlaceholder: '主視覺相片(placeholder)',
       f1Title: '高清印刷', f1Desc: '色彩鮮明持久,還原相片每個細節。',
       f2Title: '自由構圖', f2Desc: '即時預覽,拖動縮放,完全你話事。',
-      f3Title: '多種款式', f3Desc: '透明、霧面、防摔軍規,啱晒不同需要。',
+      f3Title: '香港印刷', f3Desc: '多年經驗，質素保證。',
       ctaTitle: '準備好打造你嘅專屬手機殼?', ctaButton: '立即開始',
     },
     orderSuccess: {
