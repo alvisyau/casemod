@@ -49,6 +49,53 @@ function CustomPhotoPreview({ url, transform, displayW = 130 }) {
   )
 }
 
+// ⭐ 拼圖切片:用落單時嘅 PuzzleEditor 公式還原其中一格
+function PuzzleSlicePreview({ plate, displayW = 110 }) {
+  const url = plate?.custom_photo_url
+  const frameW = plate?.frameW || 180
+  const frameH = plate?.frameH || 380
+  const totalW = plate?.totalW || frameW
+  const scale = plate?.scale || 1
+  const off = plate?.offset || { dx: 0, dy: 0 }
+  const i = plate?.slice?.index ?? 0
+  const ratio = displayW / frameW
+
+  if (!url) return <span className="text-gray-400 text-sm">未有相片</span>
+
+  return (
+    <div style={{
+      width: frameW * ratio, height: frameH * ratio,
+      overflow: 'hidden', position: 'relative',
+      borderRadius: 14, border: '2px solid #1f2937', background: '#f3f4f6',
+    }}>
+      <div style={{
+        position: 'absolute', top: 0, left: 0,
+        width: totalW * ratio, height: frameH * ratio,
+        transform: `translate(${(-i * frameW + off.dx) * ratio}px, ${(off.dy) * ratio}px)`,
+      }}>
+        <img
+          src={url}
+          alt=""
+          draggable={false}
+          style={{
+            position: 'absolute', left: '50%', top: '50%',
+            width: totalW * ratio, maxWidth: 'none',
+            transform: `translate(-50%, -50%) scale(${scale})`,
+          }}
+        />
+      </div>
+    </div>
+  )
+}
+
+// ⭐ 每格標籤
+function plateLabel(p, idx) {
+  if (p?.type === 'puzzle_slice') return `殼 ${(p.slice?.index ?? idx) + 1}`
+  if (p?.type === 'shell') return `手機殼 ${p.index ?? idx + 1}`
+  if (p?.type === 'plate') return `底板 ${p.index ?? idx + 1}`
+  return `#${idx + 1}`
+}
+
 const STATUSES = ['待付款', '已付款', '製作中', '已寄出']
 
 const statusStyle = {
@@ -320,6 +367,9 @@ function AdminOrders() {
           {shown.map((o) => {
             const proof = o.payments?.[0]?.proof_url
             const payId = o.payments?.[0]?.id
+            const plates = Array.isArray(o.custom_plates) ? o.custom_plates : []
+            const isPuzzleOrder = plates.some((p) => p?.type === 'puzzle_slice')
+            const puzzleBigImg = isPuzzleOrder ? plates[0]?.custom_photo_url : null
             return (
             <div key={o.id} className="border border-gray-100 rounded-xl overflow-hidden">
               <div className="p-4 flex flex-wrap items-center gap-4">
@@ -404,30 +454,73 @@ function AdminOrders() {
                     </div>
                   </div>
 
-                  {/* ⭐ 客製相片(客人構圖) */}
-                  {o.is_custom && o.custom_photo_url && (
+                  {/* ⭐ 客製構圖 */}
+                  {o.is_custom && (
                     <div className="mb-4">
-                      <p className="text-gray-400 text-xs mb-2">客製相片(客人構圖)</p>
-                      <div className="flex items-start gap-4">
-                        <CustomPhotoPreview
-                          url={o.custom_photo_url}
-                          transform={o.photo_transform}
-                        />
-                        <div className="text-sm space-y-1">
-                          <p className="text-gray-600">{o.product_name || o.case_type}</p>
-                          <p className="text-gray-600">型號:{o.phone_model}</p>
-                          <a href={o.custom_photo_url} target="_blank" rel="noreferrer"
-                            className="inline-block text-blue-600 underline">
-                            下載原圖
+                      <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+                        <p className="text-gray-400 text-xs">
+                          客製構圖 — {o.product_name || o.case_type}(型號 {o.phone_model})
+                          {o.custom_mode === 'A' && o.plate_count ? ` · ${o.plate_count} 片底板` : ''}
+                          {o.custom_mode === 'B' && o.shell_count
+                            ? ` · ${o.shell_count} 個殼${isPuzzleOrder ? '(拼圖)' : '(獨立圖)'}`
+                            : ''}
+                        </p>
+                        {puzzleBigImg && (
+                          <a href={puzzleBigImg} target="_blank" rel="noreferrer"
+                            className="text-xs text-blue-600 underline">
+                            下載拼圖大圖
                           </a>
-                          {o.photo_transform && (
-                            <p className="text-xs text-gray-400">
-                              縮放 {(o.photo_transform.scale || 1).toFixed(2)}× ·
-                              位移 {Math.round(o.photo_transform.posX || 0)},{Math.round(o.photo_transform.posY || 0)}
-                            </p>
-                          )}
-                        </div>
+                        )}
                       </div>
+
+                      {plates.length > 0 ? (
+                        <div className="flex flex-wrap gap-3">
+                          {plates.map((p, idx) => {
+                            const isPz = p?.type === 'puzzle_slice'
+                            return (
+                              <div key={idx} className="flex flex-col items-center">
+                                {isPz
+                                  ? <PuzzleSlicePreview plate={p} />
+                                  : <CustomPhotoPreview url={p.custom_photo_url} transform={p.photo_transform} />}
+                                <span className="text-xs text-gray-600 mt-1">{plateLabel(p, idx)}</span>
+                                {!isPz && p.custom_photo_url && (
+                                  <a href={p.custom_photo_url} target="_blank" rel="noreferrer"
+                                    className="text-xs text-blue-600 underline">原圖</a>
+                                )}
+                                {p.photo_transform && (
+                                  <span className="text-[10px] text-gray-400">
+                                    {(p.photo_transform.scale || 1).toFixed(2)}× ·
+                                    {Math.round(p.photo_transform.posX || 0)},{Math.round(p.photo_transform.posY || 0)}
+                                  </span>
+                                )}
+                                {isPz && (
+                                  <span className="text-[10px] text-gray-400">
+                                    {(p.scale || 1).toFixed(2)}× ·
+                                    {Math.round(p.offset?.dx || 0)},{Math.round(p.offset?.dy || 0)}
+                                  </span>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      ) : o.custom_photo_url ? (
+                        // 舊單 fallback:單張封面
+                        <div className="flex items-start gap-4">
+                          <CustomPhotoPreview url={o.custom_photo_url} transform={o.photo_transform} />
+                          <div className="text-sm space-y-1">
+                            <a href={o.custom_photo_url} target="_blank" rel="noreferrer"
+                              className="inline-block text-blue-600 underline">下載原圖</a>
+                            {o.photo_transform && (
+                              <p className="text-xs text-gray-400">
+                                縮放 {(o.photo_transform.scale || 1).toFixed(2)}× ·
+                                位移 {Math.round(o.photo_transform.posX || 0)},{Math.round(o.photo_transform.posY || 0)}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-gray-400">未有客製相片資料</p>
+                      )}
                     </div>
                   )}
 
@@ -449,6 +542,9 @@ function AdminOrders() {
                       </div>
                     ))}
                     {!itemsByOrder[o.id] && <p className="text-gray-400">載入緊…</p>}
+                    {itemsByOrder[o.id] && itemsByOrder[o.id].length === 0 && o.is_custom && (
+                      <p className="text-gray-400">客製單:詳情見上方構圖。</p>
+                    )}
                   </div>
 
                   {/* ⭐ 總額區:特價優惠 + 運費 + 總計 */}

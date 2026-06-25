@@ -1,11 +1,17 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
-import { phoneModels } from '../data/phones'
 import PhotoEditor from '../components/PhotoEditor'
+import PuzzleEditor from '../components/PuzzleEditor'
 
 // ⭐ 澳門預設順豐站(氹仔華南工廈)
 const MO_DEFAULT_STATION = '853AA'
+
+// ⭐ 價目預設值(DB 讀到之前頂住)
+const DEFAULT_PRICING = {
+  single: { 1: 298, 2: 398, 3: 488, 4: 568, 5: 648, 6: 728, 7: 808, 8: 868, 9: 928 },
+  multi: { 1: 298, 2: 478, 3: 628 },
+}
 
 // ⭐ 運費預設值(DB 讀到之前頂住)
 const SHIPPING = {
@@ -69,12 +75,22 @@ function Order() {
   const navigate = useNavigate()
 
   const [step, setStep] = useState(1)
-  const [products, setProducts] = useState([])
+  const [activeIdx, setActiveIdx] = useState(0)
+
+  // ⭐ 客製化資料
   const [order, setOrder] = useState({
+    mode: null,          // 'A' | 'B'
     phone_model: null,
-    product: null,
-    photo: null,
+    plateCount: 1,       // 模式 A:1–9
+    shellCount: 1,       // 模式 B:1–3
+    bMode: 'separate',   // 模式 B:'puzzle' | 'separate'
+    plates: [],          // 模式 A / B-separate:每格一個 photo
+    puzzle: null,        // 模式 B-puzzle
   })
+
+  // ⭐ 後台資料
+  const [phoneModelList, setPhoneModelList] = useState([])
+  const [pricing, setPricing] = useState(DEFAULT_PRICING)
 
   // 收件資料
   const [name, setName] = useState('')
@@ -85,7 +101,7 @@ function Order() {
   const [payMethod, setPayMethod] = useState('FPS')
 
   // 送貨
-  const [deliveryType, setDeliveryType] = useState('sf_store') // sf_store / sf_locker / home
+  const [deliveryType, setDeliveryType] = useState('sf_store')
   const [sfStationCode, setSfStationCode] = useState('')
   const [sfStationName, setSfStationName] = useState('')
   const [selectedPoint, setSelectedPoint] = useState(null)
@@ -105,13 +121,28 @@ function Order() {
   const inputClass =
     'w-full border border-gray-200 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10'
 
+  // ⭐ 讀手機型號(後台 active)
   useEffect(() => {
     supabase
-      .from('products')
-      .select('*')
+      .from('phone_models')
+      .select('name')
       .eq('active', true)
-      .order('sort_order')
-      .then(({ data }) => setProducts(data || []))
+      .order('sort_order', { ascending: true })
+      .then(({ data }) => setPhoneModelList((data || []).map((m) => m.name)))
+  }, [])
+
+  // ⭐ 讀價目
+  useEffect(() => {
+    supabase
+      .from('store_settings').select('value').eq('key', 'pricing').single()
+      .then(({ data }) => {
+        if (data?.value) {
+          setPricing({
+            single: { ...DEFAULT_PRICING.single, ...(data.value.single || {}) },
+            multi: { ...DEFAULT_PRICING.multi, ...(data.value.multi || {}) },
+          })
+        }
+      })
   }, [])
 
   // 讀收款設定
@@ -197,7 +228,6 @@ function Order() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sfDistrict, deliveryType, region, loadingPoints, sfPoints])
 
-  // 順豐點按地區隔離
   const regionPoints = sfPoints.filter((s) => {
     const macau = (s.district || '').includes('澳門')
     return isMO ? macau : !macau
@@ -230,16 +260,64 @@ function Order() {
     pickPoint(st || null)
   }
 
+  // ⭐ 客製化衍生值
+  const isPuzzle = order.mode === 'B' && order.bMode === 'puzzle'
+  const itemCount = order.mode === 'A' ? order.plateCount : order.shellCount
+  const itemLabel = order.mode === 'A' ? '底板' : '手機殼'
+
+  const unitPrice =
+    order.mode === 'A'
+      ? (pricing.single[order.plateCount] || 0)
+      : order.mode === 'B'
+      ? (pricing.multi[order.shellCount] || 0)
+      : 0
+
+  const modeDesc =
+    order.mode === 'A'
+      ? `單殼 + ${order.plateCount} 片底板`
+      : order.mode === 'B'
+      ? `${order.shellCount} 個殼${isPuzzle ? '(拼圖大圖)' : '(獨立圖)'}`
+      : ''
+
   // 價錢
   const shipInfo = SHIPPING[region] || SHIPPING['其他']
-  const unitPrice = order.product?.price_hkd || 0
   const shippingFee =
     shippingFees && shippingFees[FEE_KEY[region]] != null
       ? shippingFees[FEE_KEY[region]]
       : shipInfo.fee
   const grandTotal = unitPrice + shippingFee
 
-  // step 4 → 5 前驗證
+  // ⭐ 結構性改動時清空已上載相片
+  function resetPhotos(patch) {
+    setOrder((o) => ({ ...o, ...patch, plates: [], puzzle: null }))
+    setActiveIdx(0)
+  }
+  function updatePlate(i, photo) {
+    setOrder((o) => {
+      const p = [...o.plates]
+      p[i] = photo
+      return { ...o, plates: p }
+    })
+  }
+
+  // ⭐ step 2 構圖完成?
+  function step2Done() {
+    if (order.mode === 'B' && order.bMode === 'puzzle') return !!order.puzzle?.imgSrc
+    for (let i = 0; i < itemCount; i++) {
+      if (!order.plates[i]?.imgSrc) return false
+    }
+    return itemCount > 0
+  }
+
+  // step 1 → 2 驗證
+  function goToPhotos() {
+    if (!order.mode) return alert('請揀客製方式')
+    if (!order.phone_model) return alert('請揀手機型號')
+    setStep(2)
+    window.scrollTo(0, 0)
+  }
+
+  // step 3 → 4 前驗證
   function goToConfirm() {
     if (!name.trim()) return alert('請填寫姓名')
     if (!phone.trim()) return alert('請填寫聯絡電話')
@@ -249,7 +327,7 @@ function Order() {
       if (!address.trim()) return alert('請填寫收件地址')
     }
     if (!proofUrl) return alert('請先上載付款截圖')
-    setStep(5)
+    setStep(4)
     window.scrollTo(0, 0)
   }
 
@@ -271,106 +349,135 @@ function Order() {
   }
 
   async function uploadCustomPhoto(photo) {
-  // 用返原始 File,質素最好(後台先睇到清晰原圖)
-  let blob = photo?.file
-  if (!(blob instanceof File || blob instanceof Blob)) {
-    if (!photo?.imgSrc) throw new Error('搵唔到相片')
-    const res = await fetch(photo.imgSrc)
-    blob = await res.blob()
-  }
-  const ext = (blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg')
-  const path = `custom/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-
-  const { error } = await supabase.storage
-    .from('customer-uploads')               // ← 改返你個 bucket
-    .upload(path, blob, { contentType: blob.type || 'image/jpeg', upsert: false })
-  if (error) throw error
-
-  // 存完整 public URL,後台可以直接 <img src=...>
-  const { data } = supabase.storage.from('customer-uploads').getPublicUrl(path)
-  return data.publicUrl
-}
-
-  // 送出訂單
-  // 送出訂單
-async function handleSubmit() {
-  setSubmitting(true)
-  try {
-    // 1️⃣ 客製相片上 Storage(回傳完整 public URL)
-    const photoPath = await uploadCustomPhoto(order.photo)
-
-    // 2️⃣ 整理送貨描述
-    const sfStation = useSFStore
-      ? (sfStationName ? `${sfStationName} (${sfStationCode.trim()})` : sfStationCode.trim())
-      : null
-    const pickupLabel = isLocker ? '順豐自助櫃' : '順豐站自取'
-    let shippingMethod
-    if (isHK) shippingMethod = useSFStore ? pickupLabel : '順豐送貨上門'
-    else if (isMO) shippingMethod = useSFStore ? '順豐站自取' : '順豐送貨上門'
-    else if (region === '內地') shippingMethod = '順豐送貨上門'
-    else shippingMethod = '平郵 / 其他快遞'
-    const finalAddress = useSFStore
-      ? `${isLocker ? '自助櫃' : '順豐站'}:${sfStation}`
-      : address.trim()
-
-    // 相片構圖參數(只存數值 + 框尺寸,後台先還原到)
-    const photoTransform = order.photo ? {
-      scale: order.photo.scale ?? 1,
-      posX:  order.photo.posX ?? 0,
-      posY:  order.photo.posY ?? 0,
-      frameW: order.photo.frameW ?? 260,
-      frameH: order.photo.frameH ?? 540,
-    } : null
-
-    const orderNumber = 'C' + Date.now().toString().slice(-9)
-
-    // 3️⃣ 寫入 orders 表
-    const { data, error } = await supabase
-      .from('orders')
-      .insert({
-        // ---- 必填 ----
-        order_number:     orderNumber,
-        phone_model:      order.phone_model,
-        case_type:        order.product?.name_zh_hk ?? '霧面硬殼',
-        customer_name:    name.trim(),
-        customer_phone:   phone.trim(),
-        customer_address: finalAddress,
-        currency:         'HKD',
-        amount:           grandTotal,
-        payment_method:   payMethod,
-
-        // ---- 選填 ----
-        region,
-        shipping_method:  shippingMethod,
-        shipping_fee:     shippingFee ?? 0,
-        sf_station:       sfStation || null,
-
-        // 客製相片
-        is_custom:        true,
-        product_id:       order.product?.id ?? null,
-        product_name:     order.product?.name_zh_hk ?? null,
-        custom_photo_url: photoPath,           // 完整 URL
-        photo_transform:  photoTransform,      // 構圖數值
-
-        // 付款證明暫時放 note(因為冇 proof_url 欄位)
-        note: [note.trim(), proofUrl ? `付款證明:${proofUrl}` : '']
-                .filter(Boolean).join('\n') || null,
-      })
-      .select('order_number')
-      .single()
-
+    let blob = photo?.file
+    if (!(blob instanceof File || blob instanceof Blob)) {
+      if (!photo?.imgSrc) throw new Error('搵唔到相片')
+      const res = await fetch(photo.imgSrc)
+      blob = await res.blob()
+    }
+    const ext = (blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg')
+    const path = `custom/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+    const { error } = await supabase.storage
+      .from('customer-uploads')
+      .upload(path, blob, { contentType: blob.type || 'image/jpeg', upsert: false })
     if (error) throw error
-
-    navigate('/order-success', { state: { orderNumber: data?.order_number || orderNumber } })
-  } catch (e) {
-    console.error(e)
-    alert('落單失敗:\n' + e.message)
-  } finally {
-    setSubmitting(false)
+    const { data } = supabase.storage.from('customer-uploads').getPublicUrl(path)
+    return data.publicUrl
   }
-}
+
+  // 送出訂單
+  async function handleSubmit() {
+    setSubmitting(true)
+    try {
+      // 1️⃣ 上載客製相片,整理 custom_plates
+      let plates = []
+      let coverUrl = null
+      let coverTransform = null
+
+      if (order.mode === 'B' && order.bMode === 'puzzle') {
+        const pz = order.puzzle
+        const url = await uploadCustomPhoto({ file: pz.file, imgSrc: pz.imgSrc })
+        coverUrl = url
+        plates = Array.from({ length: order.shellCount }).map((_, i) => ({
+          index: i + 1,
+          type: 'puzzle_slice',
+          custom_photo_url: url,
+          slice: { index: i, total: order.shellCount },
+          offset: pz.offsets?.[i] || { dx: 0, dy: 0 },
+          scale: pz.scale,
+          frameW: pz.frameW,
+          frameH: pz.frameH,
+          totalW: pz.totalW,
+        }))
+        coverTransform = {
+          puzzle: true,
+          count: order.shellCount,
+          scale: pz.scale,
+          totalW: pz.totalW,
+          frameW: pz.frameW,
+          frameH: pz.frameH,
+        }
+      } else {
+        const type = order.mode === 'A' ? 'plate' : 'shell'
+        for (let i = 0; i < itemCount; i++) {
+          const ph = order.plates[i]
+          const url = await uploadCustomPhoto(ph)
+          const t = {
+            scale: ph.scale ?? 1,
+            posX: ph.posX ?? 0,
+            posY: ph.posY ?? 0,
+            frameW: ph.frameW ?? 260,
+            frameH: ph.frameH ?? 540,
+          }
+          plates.push({ index: i + 1, type, custom_photo_url: url, photo_transform: t })
+          if (i === 0) { coverUrl = url; coverTransform = t }
+        }
+      }
+
+      // 2️⃣ 送貨描述
+      const sfStation = useSFStore
+        ? (sfStationName ? `${sfStationName} (${sfStationCode.trim()})` : sfStationCode.trim())
+        : null
+      const pickupLabel = isLocker ? '順豐自助櫃' : '順豐站自取'
+      let shippingMethod
+      if (isHK) shippingMethod = useSFStore ? pickupLabel : '順豐送貨上門'
+      else if (isMO) shippingMethod = useSFStore ? '順豐站自取' : '順豐送貨上門'
+      else if (region === '內地') shippingMethod = '順豐送貨上門'
+      else shippingMethod = '平郵 / 其他快遞'
+      const finalAddress = useSFStore
+        ? `${isLocker ? '自助櫃' : '順豐站'}:${sfStation}`
+        : address.trim()
+
+      const orderNumber = 'C' + Date.now().toString().slice(-9)
+
+      // 3️⃣ 寫入 orders
+      const { data, error } = await supabase
+        .from('orders')
+        .insert({
+          order_number:     orderNumber,
+          phone_model:      order.phone_model,
+          case_type:        `客製化 — ${modeDesc}`,
+          customer_name:    name.trim(),
+          customer_phone:   phone.trim(),
+          customer_address: finalAddress,
+          currency:         'HKD',
+          amount:           grandTotal,
+          payment_method:   payMethod,
+
+          region,
+          shipping_method:  shippingMethod,
+          shipping_fee:     shippingFee ?? 0,
+          sf_station:       sfStation || null,
+
+          // 客製化
+          is_custom:        true,
+          custom_mode:      order.mode,
+          shell_count:      order.mode === 'B' ? order.shellCount : null,
+          plate_count:      order.mode === 'A' ? order.plateCount : null,
+          custom_plates:    plates,
+          custom_photo_url: coverUrl,
+          photo_transform:  coverTransform,
+          product_id:       null,
+          product_name:     modeDesc,
+
+          note: [note.trim(), proofUrl ? `付款證明:${proofUrl}` : '']
+                  .filter(Boolean).join('\n') || null,
+        })
+        .select('order_number')
+        .single()
+
+      if (error) throw error
+      navigate('/order-success', { state: { orderNumber: data?.order_number || orderNumber } })
+    } catch (e) {
+      console.error(e)
+      alert('落單失敗:\n' + e.message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   const pay = settings || {}
-  const steps = ['揀機型', '揀款式', '上載相片', '填資料', '確認落單']
+  const steps = ['揀客製方式', '上載相片', '填資料', '確認落單']
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-10">
@@ -386,30 +493,130 @@ async function handleSubmit() {
                 ${active ? 'bg-black text-white' : done ? 'bg-gray-900 text-white' : 'bg-gray-200 text-gray-400'}`}>
                 {done ? '✓' : n}
               </div>
-              <span className={`mt-1 text-xs ${active ? 'text-black font-medium' : 'text-gray-400'}`}>{label}</span>
+              <span className={`mt-1 text-xs text-center ${active ? 'text-black font-medium' : 'text-gray-400'}`}>{label}</span>
             </div>
           )
         })}
       </div>
 
-      {/* Step 1：揀機型 */}
+      {/* Step 1:揀客製方式 + 型號 + 數量 */}
       {step === 1 && (
-        <div>
-          <h2 className="text-lg font-bold mb-4">選擇你的手機型號</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {phoneModels.map((model) => {
-              const selected = order.phone_model === model
-              return (
-                <button key={model} onClick={() => setOrder({ ...order, phone_model: model })}
-                  className={`p-4 rounded-lg border text-sm font-medium text-left transition
-                  ${selected ? 'border-black bg-black text-white' : 'border-gray-200 bg-white hover:border-gray-400'}`}>
-                  {model}
-                </button>
-              )
-            })}
+        <div className="space-y-6">
+          <div>
+            <h2 className="text-lg font-bold mb-1">選擇客製方式</h2>
+            <p className="text-sm text-gray-500 mb-4">兩種模式唔可以撈埋一齊。如需混合,請分開落兩張單。</p>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <button onClick={() => resetPhotos({ mode: 'A' })}
+                className={`p-5 rounded-xl border text-left transition ${
+                  order.mode === 'A' ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'
+                }`}>
+                <p className="font-medium">單殼多片</p>
+                <p className="text-sm text-gray-500 mt-1">一個殼 + 多片底板,日日換款。</p>
+              </button>
+              <button onClick={() => resetPhotos({ mode: 'B' })}
+                className={`p-5 rounded-xl border text-left transition ${
+                  order.mode === 'B' ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'
+                }`}>
+                <p className="font-medium">多殼(情侶 / 家人)</p>
+                <p className="text-sm text-gray-500 mt-1">2–3 個殼拼成大圖,或各自獨立圖。</p>
+              </button>
+            </div>
           </div>
-          <div className="mt-8 flex justify-end">
-            <button disabled={!order.phone_model} onClick={() => setStep(2)}
+
+          {/* 型號 */}
+          {order.mode && (
+            <div>
+              <h3 className="text-sm font-medium mb-2">
+                手機型號
+                {order.mode === 'B' && <span className="text-gray-400 font-normal"> (全部殼用同一型號)</span>}
+              </h3>
+              {phoneModelList.length === 0 ? (
+                <p className="text-sm text-gray-400">未有型號,請聯絡商家。</p>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {phoneModelList.map((model) => {
+                    const selected = order.phone_model === model
+                    return (
+                      <button key={model} onClick={() => setOrder((o) => ({ ...o, phone_model: model }))}
+                        className={`p-3 rounded-lg border text-sm font-medium text-left transition
+                        ${selected ? 'border-black bg-black text-white' : 'border-gray-200 bg-white hover:border-gray-400'}`}>
+                        {model}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 模式 A:片數 */}
+          {order.mode === 'A' && (
+            <div>
+              <h3 className="text-sm font-medium mb-2">底板片數(1–9 片)</h3>
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+                  <button key={n} onClick={() => resetPhotos({ mode: 'A', plateCount: n })}
+                    className={`py-3 rounded-lg border text-sm font-medium transition ${
+                      order.plateCount === n ? 'border-black bg-black text-white' : 'border-gray-200 hover:border-gray-400'
+                    }`}>
+                    {n} 片
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 模式 B:殼數 + 子模式 */}
+          {order.mode === 'B' && (
+            <>
+              <div>
+                <h3 className="text-sm font-medium mb-2">手機殼數量(1–3 個)</h3>
+                <div className="grid grid-cols-3 gap-2">
+                  {[1, 2, 3].map((n) => (
+                    <button key={n} onClick={() => resetPhotos({ mode: 'B', shellCount: n, bMode: n === 1 ? 'separate' : order.bMode })}
+                      className={`py-3 rounded-lg border text-sm font-medium transition ${
+                        order.shellCount === n ? 'border-black bg-black text-white' : 'border-gray-200 hover:border-gray-400'
+                      }`}>
+                      {n} 個
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {order.shellCount >= 2 && (
+                <div>
+                  <h3 className="text-sm font-medium mb-2">構圖方式</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button onClick={() => resetPhotos({ mode: 'B', bMode: 'puzzle' })}
+                      className={`p-4 rounded-lg border text-left text-sm transition ${
+                        order.bMode === 'puzzle' ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'
+                      }`}>
+                      <p className="font-medium">拼圖大圖</p>
+                      <p className="text-gray-500 mt-1">上載一張大圖,自動切成 {order.shellCount} 份。</p>
+                    </button>
+                    <button onClick={() => resetPhotos({ mode: 'B', bMode: 'separate' })}
+                      className={`p-4 rounded-lg border text-left text-sm transition ${
+                        order.bMode === 'separate' ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'
+                      }`}>
+                      <p className="font-medium">各自獨立圖</p>
+                      <p className="text-gray-500 mt-1">每個殼分別上載一張相。</p>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* 價錢提示 */}
+          {order.mode && (
+            <div className="flex items-center justify-between bg-gray-50 border border-gray-100 rounded-lg px-4 py-3">
+              <span className="text-sm text-gray-600">{modeDesc}</span>
+              <span className="font-bold">HK${unitPrice}</span>
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <button disabled={!order.mode || !order.phone_model} onClick={goToPhotos}
               className="px-6 py-2 rounded-lg bg-black text-white font-medium disabled:bg-gray-300 disabled:cursor-not-allowed">
               下一步
             </button>
@@ -417,51 +624,57 @@ async function handleSubmit() {
         </div>
       )}
 
-      {/* Step 2：揀款式 */}
+      {/* Step 2:上載相片 + 構圖 */}
       {step === 2 && (
         <div>
-          <h2 className="text-lg font-bold mb-1">選擇手機殼款式</h2>
-          <p className="text-sm text-gray-500 mb-4">型號：{order.phone_model}</p>
-          <div className="space-y-3">
-            {products.map((p) => {
-              const selected = order.product?.id === p.id
-              return (
-                <button key={p.id} onClick={() => setOrder({ ...order, product: p })}
-                  className={`w-full p-4 rounded-lg border flex items-center justify-between transition
-                  ${selected ? 'border-black bg-gray-50' : 'border-gray-200 bg-white hover:border-gray-400'}`}>
-                  <span className="font-medium">{p.name_zh_hk}</span>
-                  <span className="text-gray-700">HK${p.price_hkd}</span>
-                </button>
-              )
-            })}
-          </div>
+          <h2 className="text-lg font-bold mb-1">上載相片並調整構圖</h2>
+          <p className="text-sm text-gray-500 mb-4">{order.phone_model} ／ {modeDesc}</p>
+
+          {isPuzzle ? (
+            <PuzzleEditor
+              count={order.shellCount}
+              value={order.puzzle}
+              onChange={(pz) => setOrder((o) => ({ ...o, puzzle: pz }))}
+            />
+          ) : (
+            <>
+              {itemCount > 1 && (
+                <div className="flex gap-2 mb-4 flex-wrap">
+                  {Array.from({ length: itemCount }).map((_, i) => {
+                    const filled = !!order.plates[i]?.imgSrc
+                    return (
+                      <button key={i} onClick={() => setActiveIdx(i)}
+                        className={`px-3 py-1.5 rounded-lg text-sm border transition ${
+                          activeIdx === i ? 'border-black bg-black text-white'
+                          : filled ? 'border-gray-300 bg-gray-50' : 'border-gray-200'
+                        }`}>
+                        {itemLabel} {i + 1} {filled && '✓'}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+              <PhotoEditor
+                key={activeIdx}
+                value={order.plates[activeIdx]}
+                onChange={(photo) => updatePlate(activeIdx, photo)}
+              />
+            </>
+          )}
+
           <div className="mt-8 flex justify-between">
             <button onClick={() => setStep(1)} className="px-6 py-2 rounded-lg border border-gray-300 font-medium">返回</button>
-            <button disabled={!order.product} onClick={() => setStep(3)}
+            <button disabled={!step2Done()} onClick={() => { setStep(3); window.scrollTo(0, 0) }}
               className="px-6 py-2 rounded-lg bg-black text-white font-medium disabled:bg-gray-300 disabled:cursor-not-allowed">下一步</button>
           </div>
         </div>
       )}
 
-      {/* Step 3：上載相片 + 調構圖 */}
+      {/* Step 3:填資料 + 付款 */}
       {step === 3 && (
-        <div>
-          <h2 className="text-lg font-bold mb-1">上載相片並調整構圖</h2>
-          <p className="text-sm text-gray-500 mb-4">{order.phone_model} ／ {order.product?.name_zh_hk}</p>
-          <PhotoEditor value={order.photo} onChange={(photo) => setOrder({ ...order, photo })} />
-          <div className="mt-8 flex justify-between">
-            <button onClick={() => setStep(2)} className="px-6 py-2 rounded-lg border border-gray-300 font-medium">返回</button>
-            <button disabled={!order.photo?.imgSrc} onClick={() => setStep(4)}
-              className="px-6 py-2 rounded-lg bg-black text-white font-medium disabled:bg-gray-300 disabled:cursor-not-allowed">下一步</button>
-          </div>
-        </div>
-      )}
-
-      {/* Step 4：填資料 + 付款 */}
-      {step === 4 && (
         <div className="space-y-4">
           <h2 className="text-lg font-bold mb-1">填寫收件資料及付款</h2>
-          <p className="text-sm text-gray-500 mb-2">{order.phone_model} ／ {order.product?.name_zh_hk}</p>
+          <p className="text-sm text-gray-500 mb-2">{order.phone_model} ／ {modeDesc}</p>
 
           <div>
             <label className="block text-sm font-medium mb-2">姓名 <span className="text-red-400">*</span></label>
@@ -490,7 +703,6 @@ async function handleSubmit() {
             </span>
           </div>
 
-          {/* 香港 / 澳門:派送方式 */}
           {(isHK || isMO) && (
             <div>
               <label className="block text-sm font-medium mb-2">派送方式</label>
@@ -510,7 +722,6 @@ async function handleSubmit() {
             </div>
           )}
 
-          {/* 順豐站/自助櫃 vs 送貨上門 */}
           {useSFStore ? (
             <div className="space-y-3">
               {isHK && (
@@ -597,7 +808,6 @@ async function handleSubmit() {
             <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className={inputClass} placeholder="有咩特別要求可以寫喺度" />
           </div>
 
-          {/* 付款方式 */}
           <div className="pt-2">
             <label className="block text-sm font-medium mb-2">付款方式</label>
             <div className="grid grid-cols-2 gap-3">
@@ -612,7 +822,6 @@ async function handleSubmit() {
             </div>
           </div>
 
-          {/* 付款資料 */}
           <div className="border border-gray-100 rounded-xl p-5">
             <p className="text-sm text-gray-500 mb-1">
               請以 <span className="font-medium text-black">{payMethod === 'FPS' ? '轉數快 FPS' : 'PayMe'}</span> 付款
@@ -640,7 +849,6 @@ async function handleSubmit() {
             )}
           </div>
 
-          {/* 上載付款截圖 */}
           <div className="border border-gray-100 rounded-xl p-5">
             <p className="text-sm font-medium mb-2">上載付款截圖 <span className="text-red-400">*</span></p>
             <p className="text-xs text-gray-400 mb-3">過數後請截圖上載,我哋核對後會開始製作。</p>
@@ -660,29 +868,41 @@ async function handleSubmit() {
           </div>
 
           <div className="mt-8 flex justify-between">
-            <button onClick={() => setStep(3)} className="px-6 py-2 rounded-lg border border-gray-300 font-medium">返回</button>
+            <button onClick={() => setStep(2)} className="px-6 py-2 rounded-lg border border-gray-300 font-medium">返回</button>
             <button onClick={goToConfirm}
               className="px-6 py-2 rounded-lg bg-black text-white font-medium">下一步:確認</button>
           </div>
         </div>
       )}
 
-      {/* Step 5：確認落單 */}
-      {step === 5 && (
+      {/* Step 4:確認落單 */}
+      {step === 4 && (
         <div className="space-y-5">
           <h2 className="text-lg font-bold">確認訂單</h2>
 
           {/* 客製預覽 */}
-          <div className="border border-gray-100 rounded-xl p-5 flex items-center gap-4">
-            {order.photo?.imgSrc && (
-              <img src={order.photo.imgSrc} alt="客製相片" className="w-20 h-20 object-cover rounded-lg border" />
-            )}
-            <div className="text-sm">
-              <p className="font-medium">{order.product?.name_zh_hk}</p>
-              <p className="text-gray-500">型號：{order.phone_model}</p>
-              <p className="text-gray-500">客製相片已選</p>
+          <div className="border border-gray-100 rounded-xl p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm">
+                <p className="font-medium">{modeDesc}</p>
+                <p className="text-gray-500">型號:{order.phone_model}</p>
+              </div>
+              <span className="font-medium">HK${unitPrice}</span>
             </div>
-            <span className="ml-auto font-medium">HK${unitPrice}</span>
+            <div className="flex gap-2 flex-wrap">
+              {isPuzzle ? (
+                order.puzzle?.imgSrc && (
+                  <img src={order.puzzle.imgSrc} alt="拼圖大圖" className="h-20 object-cover rounded-lg border" />
+                )
+              ) : (
+                Array.from({ length: itemCount }).map((_, i) => (
+                  order.plates[i]?.imgSrc && (
+                    <img key={i} src={order.plates[i].imgSrc} alt={`${itemLabel}${i + 1}`}
+                      className="w-16 h-16 object-cover rounded-lg border" />
+                  )
+                ))
+              )}
+            </div>
           </div>
 
           {/* 收件資料 */}
@@ -711,7 +931,7 @@ async function handleSubmit() {
           </div>
 
           <div className="flex justify-between">
-            <button onClick={() => setStep(4)} disabled={submitting}
+            <button onClick={() => setStep(3)} disabled={submitting}
               className="px-6 py-2 rounded-lg border border-gray-300 font-medium disabled:opacity-50">返回</button>
             <button onClick={handleSubmit} disabled={submitting || uploading}
               className="px-6 py-2 rounded-lg bg-black text-white font-medium hover:bg-gray-800 transition disabled:opacity-50">
