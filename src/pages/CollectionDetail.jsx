@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { useCart } from '../context/CartContext'
 import { useLang } from '../context/LanguageContext'
+import CaseFrame from '../components/CaseFrame'
 
 const gradients = [
   'from-gray-200 to-gray-400',
@@ -161,22 +162,21 @@ function CollectionDetail() {
 
       <div className="grid md:grid-cols-2 gap-10 mt-6 items-start">
         {/* 左:大圖 + 縮圖 */}
-        <div className="mx-auto w-full max-w-xs md:sticky md:top-24">
-          <div className="relative aspect-[9/19] rounded-3xl overflow-hidden border border-gray-100 bg-gray-50">
-            {activeImg ? (
-              <img src={activeImg} alt={design.name_zh_hk} className="w-full h-full object-cover" />
-            ) : (
-              <div className={`w-full h-full bg-gradient-to-br ${gradient} flex items-center justify-center`}>
-                <span className="text-xs text-white/70">{t('detail.preview')}</span>
-              </div>
-            )}
-            <div className="absolute top-4 left-4 w-12 h-12 rounded-2xl border-2 border-white/50" />
-            {soldOut && (
-              <span className="absolute top-4 right-4 text-xs bg-black/70 text-white px-2.5 py-1 rounded-full">
-                {t('detail.soldOut')}
-              </span>
-            )}
-          </div>
+                 <div className="mx-auto w-full max-w-xs md:sticky md:top-24">
+
+  <CaseFrame
+    image={activeImg}
+    model={model || availableModels[0] || ''}
+    gradient={gradient}
+    soldOut={soldOut}
+    soldOutLabel={t('detail.soldOut')}
+    previewLabel={t('detail.preview')}
+  />
+
+  {allImages.length > 1 && (
+    {/* …縮圖維持原樣,唔使改… */}
+  )}
+</div>
 
           {allImages.length > 1 && (
             <div className="flex gap-2 mt-3 flex-wrap justify-center">
@@ -270,7 +270,7 @@ function CollectionDetail() {
           </p>
         </div>
       </div>
-    </div>
+    
   )
 }
 
