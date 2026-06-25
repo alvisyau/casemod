@@ -13,10 +13,12 @@ import RequireAuth from './components/RequireAuth'
 import AdminProducts from './pages/AdminProducts'
 import AdminCollections from './pages/AdminCollections'
 import AdminSettings from './pages/AdminSettings'
+import FaviconManager from './components/FaviconManager'   // ⭐ 新增
 
 function App() {
   return (
     <BrowserRouter>
+      <FaviconManager />          {/* ⭐ 動態 favicon */}
       <Routes>
         {/* ===== 前台(包 Layout:有 header / 購物車 / footer) ===== */}
         <Route element={<Layout />}>

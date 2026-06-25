@@ -1,5 +1,6 @@
 import { Link, NavLink, Outlet } from 'react-router-dom'
-import { useCart } from '../context/CartContext'   // ← 路徑對應你 Layout 位置
+import { useCart } from '../context/CartContext'
+import BrandLogo from './BrandLogo'
 
 function Layout() {
   const linkClass = ({ isActive }) =>
@@ -9,9 +10,9 @@ function Layout() {
     <div className="min-h-screen flex flex-col bg-white text-gray-900">
       {/* 頂部導覽 */}
       <header className="border-b border-gray-100 sticky top-0 bg-white/80 backdrop-blur z-10">
-        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
-          <Link to="/" className="text-lg font-bold tracking-tight">CASEMOD</Link>
-       <nav className="flex items-center gap-6">
+        <div className="max-w-5xl mx-auto px-4 h-24 flex items-center justify-between">
+          <BrandLogo />
+          <nav className="flex items-center gap-6">
             <NavLink to="/" className={linkClass} end>首頁</NavLink>
             <NavLink to="/collection" className={linkClass}>現成系列</NavLink>
 

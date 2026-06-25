@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
+import { useBranding } from '../hooks/useBranding'
 
 function AdminLogin() {
   const navigate = useNavigate()
+  const { login_logo_url: loginLogo } = useBranding()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -35,6 +37,12 @@ function AdminLogin() {
   return (
     <div className="min-h-[70vh] flex items-center justify-center px-4">
       <form onSubmit={handleLogin} className="w-full max-w-sm">
+        {/* ⭐ 登入頁 Logo */}
+        {loginLogo && (
+          <img src={loginLogo} alt="CaseMod"
+            className="h-32 w-auto object-contain mx-auto mb-6" />
+        )}
+
         <h1 className="text-2xl font-bold text-center mb-2">後台登入</h1>
         <p className="text-center text-gray-400 text-sm mb-8">管理員專用</p>
 

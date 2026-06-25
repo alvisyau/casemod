@@ -16,6 +16,14 @@ const DEFAULT_SHIPPING = {
   other_fee: 150,
 }
 
+// ⭐ 品牌 logo 三個位
+const BRAND_FIELDS = [
+  { which: 'header',  field: 'header_logo_url', label: 'Header Logo',  hint: '左上角導覽列,建議橫向版' },
+  { which: 'login',   field: 'login_logo_url',  label: '登入頁 Logo',  hint: '登入畫面正中,建議直立版' },
+  { which: 'favicon', field: 'favicon_url',     label: 'Favicon',      hint: '瀏覽器分頁 icon,建議方形' },
+]
+const BRAND_KEY = { header: 'header_logo_url', login: 'login_logo_url', favicon: 'favicon_url' }
+
 function AdminSettings() {
   const [form, setForm] = useState({
     fps_phone: '',
@@ -27,6 +35,14 @@ function AdminSettings() {
   // ⭐ 運費 state(獨立)
   const [shipping, setShipping] = useState(DEFAULT_SHIPPING)
 
+  // ⭐ 品牌 logo state
+  const [branding, setBranding] = useState({
+    header_logo_url: '',
+    login_logo_url: '',
+    favicon_url: '',
+  })
+  const [uploadingBrand, setUploadingBrand] = useState('') // 'header'|'login'|'favicon'
+
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState('')   // 'fps' | 'payme' | ''
@@ -35,19 +51,21 @@ function AdminSettings() {
   const inputClass =
     'w-full border border-gray-200 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10'
 
-  // 載入現有設定(payment + shipping)
+  // 載入現有設定(payment + shipping + branding)
   useEffect(() => {
     async function load() {
       const { data } = await supabase
         .from('store_settings')
         .select('key, value')
-        .in('key', ['payment', 'shipping'])
+        .in('key', ['payment', 'shipping', 'branding'])
 
       if (data) {
-        const payRow = data.find((r) => r.key === 'payment')
-        const shipRow = data.find((r) => r.key === 'shipping')
-        if (payRow?.value) setForm((f) => ({ ...f, ...payRow.value }))
-        if (shipRow?.value) setShipping((s) => ({ ...s, ...shipRow.value }))
+        const payRow   = data.find((r) => r.key === 'payment')
+        const shipRow  = data.find((r) => r.key === 'shipping')
+        const brandRow = data.find((r) => r.key === 'branding')
+        if (payRow?.value)   setForm((f) => ({ ...f, ...payRow.value }))
+        if (shipRow?.value)  setShipping((s) => ({ ...s, ...shipRow.value }))
+        if (brandRow?.value) setBranding((b) => ({ ...b, ...brandRow.value }))
       }
       setLoading(false)
     }
@@ -74,20 +92,48 @@ function AdminSettings() {
     const ext = file.name.split('.').pop()
     const fileName = `qr-${which}-${Date.now()}.${ext}`
     const { error: upErr } = await supabase.storage
-      .from('store-assets')                              // ⭐ 改呢度
+      .from('store-assets')
       .upload(fileName, file, { cacheControl: '3600', upsert: false })
     if (upErr) {
       setUploading('')
       alert('QR 上載失敗:' + upErr.message)
       return
     }
-    const { data } = supabase.storage.from('store-assets').getPublicUrl(fileName)  // ⭐ 改呢度
+    const { data } = supabase.storage.from('store-assets').getPublicUrl(fileName)
     update(which === 'fps' ? 'fps_qr_url' : 'payme_qr_url', data.publicUrl)
     setUploading('')
     e.target.value = ''
   }
 
-  // 儲存(payment + shipping 一齊 upsert)
+  // ⭐ 上傳品牌 logo
+  async function handleUploadBrand(e, which) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadingBrand(which)
+    const ext = file.name.split('.').pop()
+    const fileName = `branding/${which}-${Date.now()}.${ext}`
+    const { error } = await supabase.storage
+      .from('store-assets')
+      .upload(fileName, file, { cacheControl: '3600', upsert: false })
+    if (error) {
+      setUploadingBrand('')
+      alert('Logo 上載失敗:' + error.message)
+      return
+    }
+    const { data } = supabase.storage.from('store-assets').getPublicUrl(fileName)
+    setBranding((b) => ({ ...b, [BRAND_KEY[which]]: data.publicUrl }))
+    setSaved(false)
+    setUploadingBrand('')
+    e.target.value = ''
+  }
+
+  // ⭐ 移除品牌 logo
+  function removeBrand(which) {
+    setBranding((b) => ({ ...b, [BRAND_KEY[which]]: '' }))
+    setSaved(false)
+  }
+
+  // 儲存(payment + shipping + branding 一齊 upsert)
   async function handleSave() {
     setSaving(true)
     const now = new Date().toISOString()
@@ -95,8 +141,9 @@ function AdminSettings() {
       .from('store_settings')
       .upsert(
         [
-          { key: 'payment', value: form, updated_at: now },
+          { key: 'payment',  value: form,     updated_at: now },
           { key: 'shipping', value: shipping, updated_at: now },
+          { key: 'branding', value: branding, updated_at: now },
         ],
         { onConflict: 'key' }
       )
@@ -132,6 +179,38 @@ function AdminSettings() {
       <div className="max-w-2xl mx-auto px-4 py-12">
         <h1 className="text-2xl font-bold mb-2">商店設定</h1>
         <p className="text-sm text-gray-400 mb-8">呢度設定嘅資料會喺客人結帳付款頁顯示。</p>
+
+        {/* ⭐ 品牌 Logo */}
+        <section className="border border-gray-100 rounded-xl p-6 mb-6">
+          <h2 className="font-medium mb-1">品牌 Logo</h2>
+          <p className="text-xs text-gray-400 mb-4">
+            三個位可各自上載唔同設計。留空就用預設文字。改完記得撳最底「儲存設定」。
+          </p>
+          <div className="space-y-5">
+            {BRAND_FIELDS.map(({ which, field, label, hint }) => (
+              <div key={which} className="flex items-start gap-4">
+                <div className="w-28 shrink-0">
+                  <p className="text-sm font-medium">{label}</p>
+                  <p className="text-xs text-gray-400">{hint}</p>
+                </div>
+                <div className="flex-1">
+                  {branding[field] ? (
+                    <div className="relative inline-block">
+                      <img src={branding[field]} alt={label}
+                        className="h-16 w-auto max-w-[160px] object-contain border rounded-lg bg-gray-50 p-1" />
+                      <button onClick={() => removeBrand(which)}
+                        className="absolute -top-2 -right-2 w-6 h-6 flex items-center justify-center rounded-full bg-white text-gray-600 shadow border hover:bg-red-500 hover:text-white transition">×</button>
+                    </div>
+                  ) : (
+                    <input type="file" accept="image/*" onChange={(e) => handleUploadBrand(e, which)}
+                      className="text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:bg-black file:text-white hover:file:bg-gray-800 file:cursor-pointer" />
+                  )}
+                  {uploadingBrand === which && <p className="text-xs text-gray-400 mt-2">上載緊…</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
 
         {/* FPS */}
         <section className="border border-gray-100 rounded-xl p-6 mb-6">
@@ -239,13 +318,13 @@ function AdminSettings() {
         </section>
 
         {/* ⭐ 客製化價目 */}
-<section className="border border-gray-100 rounded-xl p-6 mb-6">
-  <h2 className="font-medium mb-1">客製化價目</h2>
-  <p className="text-xs text-gray-400 mb-4">
-    設定「單殼多片」同「多殼」兩種模式嘅價錢。改完記得撳下面嘅「儲存價目」。
-  </p>
-  <PricingManager />
-</section>
+        <section className="border border-gray-100 rounded-xl p-6 mb-6">
+          <h2 className="font-medium mb-1">客製化價目</h2>
+          <p className="text-xs text-gray-400 mb-4">
+            設定「單殼多片」同「多殼」兩種模式嘅價錢。改完記得撳下面嘅「儲存價目」。
+          </p>
+          <PricingManager />
+        </section>
 
         <div className="flex items-center gap-4">
           <button onClick={handleSave} disabled={saving || uploading}
