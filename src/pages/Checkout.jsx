@@ -117,6 +117,13 @@ function Checkout() {
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone] = useState(false)
 
+  // ⭐ 折扣碼
+const [discountInput, setDiscountInput] = useState('')
+const [appliedCode, setAppliedCode] = useState('')
+const [discountAmount, setDiscountAmount] = useState(0)
+const [discountError, setDiscountError] = useState('')
+const [applying, setApplying] = useState(false)
+
   const inputClass =
     'w-full border border-gray-200 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10'
 
@@ -237,7 +244,7 @@ function Checkout() {
     shippingFees && shippingFees[FEE_KEY[region]] != null
       ? shippingFees[FEE_KEY[region]]
       : shipInfo.fee
-  const grandTotal = totalAmount + shippingFee
+  const grandTotal = Math.max(0, totalAmount - discountAmount) + shippingFee
 
   // ⭐ 地區判斷
   const isHK = region === '香港'
@@ -300,6 +307,35 @@ function Checkout() {
     setStep(2)
     window.scrollTo(0, 0)
   }
+
+  async function applyDiscount() {
+  const code = discountInput.trim()
+  if (!code) return
+  setApplying(true)
+  setDiscountError('')
+  const { data, error } = await supabase.rpc('apply_discount', {
+    p_code:        code,
+    p_subtotal:    totalAmount,
+    p_phone:       phone.trim(),
+    p_is_custom:   false,
+    p_collections: [],   // 現成商品暫不支援「指定系列」碼,如需要再傳系列
+  })
+  setApplying(false)
+  if (error) {
+    setAppliedCode(''); setDiscountAmount(0)
+    setDiscountError(error.message || '折扣碼無效')
+    return
+  }
+  const row = Array.isArray(data) ? data[0] : data
+  if (!row?.norm_code) { setDiscountError('折扣碼無效'); return }
+  setAppliedCode(row.norm_code)
+  setDiscountAmount(Number(row.discount) || 0)
+}
+
+function clearDiscount() {
+  setAppliedCode(''); setDiscountAmount(0)
+  setDiscountInput(''); setDiscountError('')
+}
 
   // 上載付款截圖
   async function handleUploadProof(e) {
@@ -364,7 +400,9 @@ function Checkout() {
       p_proof_url: proofUrl,
       p_note: note.trim() || null,
       p_customer_email: email.trim() || null,
+      p_discount_code: appliedCode || null,   // ⭐
     })
+    
 
     setSubmitting(false)
 
@@ -580,6 +618,32 @@ function Checkout() {
                 <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className={inputClass} placeholder="有咩特別要求可以寫喺度" />
               </div>
 
+              {/* 折扣碼 */}
+<div>
+  <label className="block text-sm font-medium mb-2">折扣碼(可選)</label>
+  {appliedCode ? (
+    <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm">
+      <span className="text-green-700">
+        已套用 <span className="font-semibold">{appliedCode}</span>
+        (折扣 −HK${discountAmount})
+      </span>
+      <button type="button" onClick={clearDiscount}
+        className="text-gray-400 hover:text-red-500 transition text-xs">移除</button>
+    </div>
+  ) : (
+    <div className="flex gap-2">
+      <input value={discountInput}
+        onChange={(e) => { setDiscountInput(e.target.value); setDiscountError('') }}
+        className={inputClass} placeholder="輸入折扣碼" />
+      <button type="button" onClick={applyDiscount} disabled={applying || !discountInput.trim()}
+        className="px-5 rounded-lg bg-black text-white text-sm font-medium disabled:bg-gray-300 whitespace-nowrap">
+        {applying ? '檢查中…' : '套用'}
+      </button>
+    </div>
+  )}
+  {discountError && <p className="text-xs text-red-500 mt-1">{discountError}</p>}
+</div>
+
               <div className="pt-2">
                 <label className="block text-sm font-medium mb-2">付款方式</label>
                 <div className="grid grid-cols-2 gap-3">
@@ -689,6 +753,14 @@ function Checkout() {
                   <span>− HK${totalSaved}</span>
                 </div>
               )}
+
+              {discountAmount > 0 && (
+  <div className="flex justify-between text-sm text-green-600">
+    <span>折扣({appliedCode})</span>
+    <span>− HK${discountAmount}</span>
+  </div>
+)}
+
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">運費({shipInfo.carrier})</span>
                 <span>

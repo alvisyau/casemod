@@ -13,6 +13,7 @@ function AdminNav() {
         <NavLink to="/admin/products" className={cls}>產品</NavLink>
         <NavLink to="/admin/collections" className={cls}>系列</NavLink>
         <NavLink to="/admin/settings" className={cls}>商店設定</NavLink>
+        <NavLink to="/admin/discounts" className={cls}>優惠碼</NavLink>
       </div>
     </div>
   )

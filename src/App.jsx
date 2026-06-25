@@ -14,6 +14,8 @@ import AdminProducts from './pages/AdminProducts'
 import AdminCollections from './pages/AdminCollections'
 import AdminSettings from './pages/AdminSettings'
 import FaviconManager from './components/FaviconManager'   // ⭐ 新增
+import AdminDiscounts from './pages/AdminDiscounts'
+
 
 function App() {
   return (
@@ -45,6 +47,9 @@ function App() {
         } />
         <Route path="/admin/settings" element={
           <RequireAuth><AdminSettings /></RequireAuth>
+        } />
+        <Route path="/admin/discounts" element={
+          <RequireAuth><AdminDiscounts /></RequireAuth>
         } />
       </Routes>
     </BrowserRouter>

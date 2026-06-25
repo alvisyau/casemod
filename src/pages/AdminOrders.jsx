@@ -240,7 +240,7 @@ function AdminOrders() {
     if (shown.length === 0) return alert('冇訂單可匯出')
 
     const header = [
-      '訂單編號', '狀態', '客人姓名', '聯絡電話', '地區', '收件地址',
+      '訂單編號', '狀態', '客人姓名', '聯絡電話', '電郵', '地區', '收件地址',
       '送貨方式', '順豐站', '運費(HKD)', '金額(HKD)', '付款方式', '備註', '落單時間',
     ]
     const rows = shown.map((o) => [
@@ -248,6 +248,7 @@ function AdminOrders() {
       o.status || '',
       o.customer_name,
       o.customer_phone,
+      o.customer_email || '',
       o.region || '',
       o.customer_address,
       o.shipping_method || '',
@@ -417,6 +418,9 @@ function AdminOrders() {
                       <p className="text-gray-400 text-xs mb-1">收件資料</p>
                       <p>{o.customer_name}</p>
                       <p className="text-gray-600">{o.customer_phone}</p>
+                      {o.customer_email && (
+                        <p className="text-gray-600">📧 {o.customer_email}</p>
+                      )}
                       <p className="text-gray-600">{o.region} · {o.customer_address}</p>
                       {/* ⭐ 送貨資料 */}
                       {o.shipping_method && (

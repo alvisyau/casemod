@@ -122,6 +122,13 @@ function Order() {
   const inputClass =
     'w-full border border-gray-200 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10'
 
+    // ⭐ 折扣碼
+const [discountInput, setDiscountInput] = useState('')
+const [appliedCode, setAppliedCode] = useState('')
+const [discountAmount, setDiscountAmount] = useState(0)
+const [discountError, setDiscountError] = useState('')
+const [applying, setApplying] = useState(false)
+
   // ⭐ 讀手機型號(後台 active)
   useEffect(() => {
     supabase
@@ -286,12 +293,22 @@ function Order() {
     shippingFees && shippingFees[FEE_KEY[region]] != null
       ? shippingFees[FEE_KEY[region]]
       : shipInfo.fee
-  const grandTotal = unitPrice + shippingFee
+  const grandTotal = Math.max(0, unitPrice - discountAmount) + shippingFee
 
-  // ⭐ 結構性改動時清空已上載相片
-  function resetPhotos(patch) {
-    setOrder((o) => ({ ...o, ...patch, plates: [], puzzle: null }))
-    setActiveIdx(0)
+  // ⭐ 結構性改動時先清空已上載相片(撳返同一選項唔會清)
+  function changeStructure(patch) {
+    const next = { ...order, ...patch }
+    const structureChanged =
+      next.mode !== order.mode ||
+      next.plateCount !== order.plateCount ||
+      next.shellCount !== order.shellCount ||
+      next.bMode !== order.bMode
+    if (structureChanged) {
+      setOrder({ ...next, plates: [], puzzle: null })
+      setActiveIdx(0)
+    } else {
+      setOrder(next)
+    }
   }
   function updatePlate(i, photo) {
     setOrder((o) => {
@@ -333,6 +350,35 @@ function Order() {
     setStep(4)
     window.scrollTo(0, 0)
   }
+
+  async function applyDiscount() {
+  const code = discountInput.trim()
+  if (!code) return
+  setApplying(true)
+  setDiscountError('')
+  const { data, error } = await supabase.rpc('apply_discount', {
+    p_code:        code,
+    p_subtotal:    unitPrice,
+    p_phone:       phone.trim(),
+    p_is_custom:   true,
+    p_collections: [],
+  })
+  setApplying(false)
+  if (error) {
+    setAppliedCode(''); setDiscountAmount(0)
+    setDiscountError(error.message || '折扣碼無效')
+    return
+  }
+  const row = Array.isArray(data) ? data[0] : data
+  if (!row?.norm_code) { setDiscountError('折扣碼無效'); return }
+  setAppliedCode(row.norm_code)
+  setDiscountAmount(Number(row.discount) || 0)
+}
+
+function clearDiscount() {
+  setAppliedCode(''); setDiscountAmount(0)
+  setDiscountInput(''); setDiscountError('')
+}
 
   // 上載付款截圖
   async function handleUploadProof(e) {
@@ -454,6 +500,7 @@ function Order() {
         p_proof_url:        proofUrl,
         p_note:             note.trim() || null,
         p_customer_email:   email.trim() || null,
+        p_discount_code:    appliedCode || null,   // ⭐
       })
 
       if (error) throw error
@@ -497,14 +544,14 @@ function Order() {
             <h2 className="text-lg font-bold mb-1">選擇客製方式</h2>
             <p className="text-sm text-gray-500 mb-4">兩種模式唔可以撈埋一齊。如需混合,請分開落兩張單。</p>
             <div className="grid sm:grid-cols-2 gap-3">
-              <button onClick={() => resetPhotos({ mode: 'A' })}
+              <button onClick={() => changeStructure({ mode: 'A' })}
                 className={`p-5 rounded-xl border text-left transition ${
                   order.mode === 'A' ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'
                 }`}>
                 <p className="font-medium">單殼多片</p>
                 <p className="text-sm text-gray-500 mt-1">一個殼 + 多片底板,日日換款。</p>
               </button>
-              <button onClick={() => resetPhotos({ mode: 'B' })}
+              <button onClick={() => changeStructure({ mode: 'B' })}
                 className={`p-5 rounded-xl border text-left transition ${
                   order.mode === 'B' ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'
                 }`}>
@@ -546,7 +593,7 @@ function Order() {
               <h3 className="text-sm font-medium mb-2">底板片數(1–9 片)</h3>
               <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
                 {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
-                  <button key={n} onClick={() => resetPhotos({ mode: 'A', plateCount: n })}
+                  <button key={n} onClick={() => changeStructure({ mode: 'A', plateCount: n })}
                     className={`py-3 rounded-lg border text-sm font-medium transition ${
                       order.plateCount === n ? 'border-black bg-black text-white' : 'border-gray-200 hover:border-gray-400'
                     }`}>
@@ -564,7 +611,7 @@ function Order() {
                 <h3 className="text-sm font-medium mb-2">手機殼數量(1–3 個)</h3>
                 <div className="grid grid-cols-3 gap-2">
                   {[1, 2, 3].map((n) => (
-                    <button key={n} onClick={() => resetPhotos({ mode: 'B', shellCount: n, bMode: n === 1 ? 'separate' : order.bMode })}
+                    <button key={n} onClick={() => changeStructure({ mode: 'B', shellCount: n, bMode: n === 1 ? 'separate' : order.bMode })}
                       className={`py-3 rounded-lg border text-sm font-medium transition ${
                         order.shellCount === n ? 'border-black bg-black text-white' : 'border-gray-200 hover:border-gray-400'
                       }`}>
@@ -578,14 +625,14 @@ function Order() {
                 <div>
                   <h3 className="text-sm font-medium mb-2">構圖方式</h3>
                   <div className="grid grid-cols-2 gap-3">
-                    <button onClick={() => resetPhotos({ mode: 'B', bMode: 'puzzle' })}
+                    <button onClick={() => changeStructure({ mode: 'B', bMode: 'puzzle' })}
                       className={`p-4 rounded-lg border text-left text-sm transition ${
                         order.bMode === 'puzzle' ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'
                       }`}>
                       <p className="font-medium">拼圖大圖</p>
                       <p className="text-gray-500 mt-1">上載一張大圖,自動切成 {order.shellCount} 份。</p>
                     </button>
-                    <button onClick={() => resetPhotos({ mode: 'B', bMode: 'separate' })}
+                    <button onClick={() => changeStructure({ mode: 'B', bMode: 'separate' })}
                       className={`p-4 rounded-lg border text-left text-sm transition ${
                         order.bMode === 'separate' ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'
                       }`}>
@@ -805,6 +852,32 @@ function Order() {
             <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className={inputClass} placeholder="有咩特別要求可以寫喺度" />
           </div>
 
+          {/* 折扣碼 */}
+<div>
+  <label className="block text-sm font-medium mb-2">折扣碼(可選)</label>
+  {appliedCode ? (
+    <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm">
+      <span className="text-green-700">
+        已套用 <span className="font-semibold">{appliedCode}</span>
+        (折扣 −HK${discountAmount})
+      </span>
+      <button type="button" onClick={clearDiscount}
+        className="text-gray-400 hover:text-red-500 transition text-xs">移除</button>
+    </div>
+  ) : (
+    <div className="flex gap-2">
+      <input value={discountInput}
+        onChange={(e) => { setDiscountInput(e.target.value); setDiscountError('') }}
+        className={inputClass} placeholder="輸入折扣碼" />
+      <button type="button" onClick={applyDiscount} disabled={applying || !discountInput.trim()}
+        className="px-5 rounded-lg bg-black text-white text-sm font-medium disabled:bg-gray-300 whitespace-nowrap">
+        {applying ? '檢查中…' : '套用'}
+      </button>
+    </div>
+  )}
+  {discountError && <p className="text-xs text-red-500 mt-1">{discountError}</p>}
+</div>
+
           <div className="pt-2">
             <label className="block text-sm font-medium mb-2">付款方式</label>
             <div className="grid grid-cols-2 gap-3">
@@ -922,8 +995,16 @@ function Order() {
             <div className="flex justify-between text-gray-600"><span>商品</span><span>HK${unitPrice}</span></div>
             <div className="flex justify-between text-gray-600">
               <span>運費({shipInfo.carrier})</span>
-              <span>{shippingFee > 0 ? `HK$${shippingFee}` : <span className="text-green-600">免費</span>}</span>
+                            <span>{shippingFee > 0 ? `HK$${shippingFee}` : <span className="text-green-600">免費</span>}</span>
             </div>
+
+            {discountAmount > 0 && (
+  <div className="flex justify-between text-green-600">
+    <span>折扣({appliedCode})</span>
+    <span>− HK${discountAmount}</span>
+  </div>
+)}
+         
             <div className="flex justify-between font-bold pt-1 border-t"><span>總計</span><span>HK${grandTotal}</span></div>
           </div>
 
