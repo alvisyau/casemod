@@ -162,21 +162,15 @@ function CollectionDetail() {
 
       <div className="grid md:grid-cols-2 gap-10 mt-6 items-start">
         {/* 左:大圖 + 縮圖 */}
-                 <div className="mx-auto w-full max-w-xs md:sticky md:top-24">
-
-  <CaseFrame
-    image={activeImg}
-    model={model || availableModels[0] || ''}
-    gradient={gradient}
-    soldOut={soldOut}
-    soldOutLabel={t('detail.soldOut')}
-    previewLabel={t('detail.preview')}
-  />
-
-  {allImages.length > 1 && (
-    {/* …縮圖維持原樣,唔使改… */}
-  )}
-</div>
+        <div className="mx-auto w-full max-w-xs md:sticky md:top-24">
+          <CaseFrame
+            image={activeImg}
+            model={model || availableModels[0] || ''}
+            gradient={gradient}
+            soldOut={soldOut}
+            soldOutLabel={t('detail.soldOut')}
+            previewLabel={t('detail.preview')}
+          />
 
           {allImages.length > 1 && (
             <div className="flex gap-2 mt-3 flex-wrap justify-center">
@@ -270,7 +264,7 @@ function CollectionDetail() {
           </p>
         </div>
       </div>
-    
+    </div>
   )
 }
 

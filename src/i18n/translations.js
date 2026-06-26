@@ -13,7 +13,7 @@ export const translations = {
     home: {
       eyebrow: 'Custom Made Phone Cases',
       title1: 'CaseMod', title2: '你的故事 獨一無二',
-      subtitle: '上載相片、自由調整構圖,打造獨一無二嘅手機殼。簡約設計,香港製造。',
+      subtitle: '上載相片、自由調整構圖，打造獨一無二嘅手機殼。',
       startDesign: '開始設計', heroPlaceholder: '主視覺相片(placeholder)',
       f1Title: '高清印刷', f1Desc: '色彩鮮明持久,還原相片每個細節。',
       f2Title: '自由構圖', f2Desc: '即時預覽,拖動縮放,完全你話事。',

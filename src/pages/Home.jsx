@@ -63,13 +63,15 @@ function Home() {
     <div>
       {/* 主視覺 */}
       <section className="max-w-5xl mx-auto px-4 pt-20 pb-24 text-center">
-        <p className="text-sm text-gray-400 tracking-widest uppercase mb-4">{t('home.eyebrow')}</p>
-        <h1 className="text-4xl sm:text-6xl font-bold tracking-tight leading-tight">
-          {t('home.title1')}<br />{t('home.title2')}
-        </h1>
-        <p className="mt-6 text-gray-500 max-w-xl mx-auto">
-          {t('home.subtitle')}
-        </p>
+       <p className="text-sm font-semibold tracking-[0.3em] uppercase mb-4 bg-gradient-to-r from-purple-500 to-pink-500 bg-clip-text text-transparent">
+  {t('home.eyebrow')}
+</p>
+<h1 className="text-4xl sm:text-6xl font-bold tracking-tight leading-tight">
+  {t('home.title1')}<br />{t('home.title2')}
+</h1>
+<p className="mt-6 text-base sm:text-lg font-semibold leading-relaxed whitespace-nowrap bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+  {t('home.subtitle')}
+</p>
         <div className="mt-10">
           <Link to="/order" className="inline-block px-8 py-3 rounded-lg bg-black text-white font-medium hover:bg-gray-800 transition">
             {t('home.startDesign')}

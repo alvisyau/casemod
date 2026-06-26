@@ -113,7 +113,7 @@ export default function CaseFrame({
   const layout = useMemo(() => getLayout(model), [model])
 
   return (
-    <div className="relative aspect-[9/19] rounded-[2rem] overflow-hidden border border-gray-200 bg-gray-100 shadow-sm">
+    <div className="relative aspect-[9/17] rounded-[2rem] overflow-hidden border border-gray-200 bg-gray-100 shadow-sm">
       {image ? (
         <img src={image} alt="" className="absolute inset-0 w-full h-full object-cover" />
       ) : (
