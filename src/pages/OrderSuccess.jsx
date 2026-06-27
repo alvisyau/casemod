@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { useLang } from '../context/LanguageContext'
 import { useCart } from '../context/CartContext'
@@ -13,10 +13,15 @@ function OrderSuccess() {
   const orderNumber = state?.orderNumber || searchParams.get('order')
   const fromStripe = !state?.orderNumber && !!searchParams.get('order')
 
-  // ⭐ Stripe 付款成功返嚟:清空購物車
+  // ⭐ Stripe 付款成功返嚟:只清空購物車一次(用 ref 防止無限 loop)
+  const cleared = useRef(false)
   useEffect(() => {
-    if (fromStripe) clearCart()
-  }, [fromStripe, clearCart])
+    if (fromStripe && !cleared.current) {
+      cleared.current = true
+      clearCart()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-24 text-center">
