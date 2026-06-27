@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { useLang } from '../context/LanguageContext'
+import { pickLang } from '../i18n/pickLang'
 
 const gradients = [
   'from-gray-200 to-gray-400',
@@ -13,7 +14,7 @@ const gradients = [
 ]
 
 function Collection() {
-  const { t } = useLang()
+  const { t, lang } = useLang()   // ⭐ 補攞 lang
   const [collections, setCollections] = useState([])
   const [designs, setDesigns] = useState([])
   const [loading, setLoading] = useState(true)
@@ -83,9 +84,13 @@ function Collection() {
 
   const q = query.trim().toLowerCase()
   if (q) {
-    visibleDesigns = visibleDesigns.filter((d) =>
-      (d.name_zh_hk || '').toLowerCase().includes(q)
-    )
+    // ⭐ 三語任一 match(用戶打簡 / 繁 / 英都搵到)
+    visibleDesigns = visibleDesigns.filter((d) => {
+      const names = [d.name_zh_hk, d.name_zh_cn, d.name_en]
+        .filter(Boolean)
+        .map((s) => s.toLowerCase())
+      return names.some((n) => n.includes(q))
+    })
   }
 
   if (loading) return <p className="text-center text-gray-400 py-32">{t('collection.loading')}</p>
@@ -176,12 +181,13 @@ function Collection() {
             const onSale = d.sale_price != null
             const cover = d.image_url || (Array.isArray(d.images) ? d.images[0] : '') || ''
             const soldOut = d.in_stock === false || (d.stock != null && d.stock <= 0)
+            const name = pickLang(d, 'name', lang)   // ⭐ 多語名
 
             return (
               <Link key={d.id} to={`/collection/${d.id}`} className="group">
                 <div className="relative aspect-[9/16] rounded-2xl overflow-hidden border border-gray-100 bg-gray-50">
                   {cover ? (
-                    <img src={cover} alt={d.name_zh_hk}
+                    <img src={cover} alt={name}
                       className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
                   ) : (
                     <div className={`w-full h-full bg-gradient-to-br ${gradient} flex items-center justify-center`}>
@@ -202,7 +208,7 @@ function Collection() {
                 </div>
 
                 <div className="mt-2.5">
-                  <p className="text-sm font-medium truncate">{d.name_zh_hk}</p>
+                  <p className="text-sm font-medium truncate">{name}</p>
                   <div className="text-sm mt-0.5">
                     {onSale ? (
                       <>

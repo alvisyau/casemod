@@ -41,3 +41,14 @@ export function useLang() {
   if (!ctx) throw new Error('useLang 必須喺 LanguageProvider 入面用')
   return ctx
 }
+
+// 根據目前語言揀名,冇就 fallback
+export function pickLang(obj, field, lang) {
+  const map = {
+    'zh-HK': obj[`${field}_zh_hk`],
+    'zh-CN': obj[`${field}_zh_cn`],
+    'en':    obj[`${field}_en`],
+  }
+  // 順序 fallback:目前語言 → 繁中 → 任何有值嘅
+  return map[lang] || obj[`${field}_zh_hk`] || map['zh-CN'] || map['en'] || ''
+}

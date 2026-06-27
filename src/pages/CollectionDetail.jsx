@@ -4,6 +4,8 @@ import { supabase } from '../supabaseClient'
 import { useCart } from '../context/CartContext'
 import { useLang } from '../context/LanguageContext'
 import CaseFrame from '../components/CaseFrame'
+import { pickLang } from '../i18n/pickLang'
+
 
 const gradients = [
   'from-gray-200 to-gray-400',
@@ -18,7 +20,7 @@ function CollectionDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { addItem } = useCart()
-  const { t } = useLang()
+  const { t, lang } = useLang()   // ⭐ 補攞 lang
 
   const [design, setDesign] = useState(null)
   const [collection, setCollection] = useState(null)
@@ -102,6 +104,10 @@ function CollectionDetail() {
     </div>
   )
 
+  // ⭐ 多語顯示(留空自動 fallback 繁中)
+  const displayName = pickLang(design, 'name', lang)
+  const displayDesc = pickLang(design, 'description', lang)
+
   const gradient = gradients[(design.sort_order ?? 1) - 1] || gradients[0]
 
   const availableModels = (() => {
@@ -136,7 +142,7 @@ function CollectionDetail() {
     if (!model) return alert(t('detail.pleaseSelectModel'))
     addItem({
       designId: design.id,
-      designName: design.name_zh_hk,
+      designName: displayName,   // ⭐ 用多語名
       collection: collectionLabel || t('detail.defaultCollection'),
       phoneModel: model,
       unitPrice: finalPrice,
@@ -157,7 +163,7 @@ function CollectionDetail() {
         {parent && (<><span>/</span><span>{parent.name}</span></>)}
         {collection && (<><span>/</span><span>{collection.name}</span></>)}
         <span>/</span>
-        <span className="text-gray-600">{design.name_zh_hk}</span>
+        <span className="text-gray-600">{displayName}</span>
       </div>
 
       <div className="grid md:grid-cols-2 gap-10 mt-6 items-start">
@@ -191,7 +197,7 @@ function CollectionDetail() {
           {collectionLabel && (
             <p className="text-sm text-gray-400 tracking-widest uppercase">{collectionLabel}</p>
           )}
-          <h1 className="text-3xl font-bold tracking-tight mt-2">{design.name_zh_hk}</h1>
+          <h1 className="text-3xl font-bold tracking-tight mt-2">{displayName}</h1>
 
           <div className="text-2xl mt-3">
             {onSale ? (
@@ -204,8 +210,8 @@ function CollectionDetail() {
             )}
           </div>
 
-          {design.description && (
-            <p className="text-gray-500 leading-relaxed mt-5">{design.description}</p>
+          {displayDesc && (
+            <p className="text-gray-500 leading-relaxed mt-5">{displayDesc}</p>
           )}
 
           {soldOut && (

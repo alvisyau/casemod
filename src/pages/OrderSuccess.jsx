@@ -1,10 +1,22 @@
-import { Link, useLocation } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { useLang } from '../context/LanguageContext'
+import { useCart } from '../context/CartContext'
 
 function OrderSuccess() {
   const { state } = useLocation()
+  const [searchParams] = useSearchParams()
   const { t } = useLang()
-  const orderNumber = state?.orderNumber
+  const { clearCart } = useCart()
+
+  // ⭐ 先睇 React state(FPS/PayMe),冇就睇 URL query(Stripe 跳返嚟)
+  const orderNumber = state?.orderNumber || searchParams.get('order')
+  const fromStripe = !state?.orderNumber && !!searchParams.get('order')
+
+  // ⭐ Stripe 付款成功返嚟:清空購物車
+  useEffect(() => {
+    if (fromStripe) clearCart()
+  }, [fromStripe, clearCart])
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-24 text-center">

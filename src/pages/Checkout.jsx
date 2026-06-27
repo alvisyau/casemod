@@ -78,7 +78,7 @@ function Checkout() {
   const [address, setAddress] = useState('')
   const [region, setRegion] = useState('香港')
   const [note, setNote] = useState('')
-  const [payMethod, setPayMethod] = useState('FPS')
+  const [payMethod, setPayMethod] = useState('FPS')   // FPS | PayMe | Stripe
 
   const [deliveryType, setDeliveryType] = useState('sf_store')
   const [sfStationCode, setSfStationCode] = useState('')
@@ -107,6 +107,9 @@ function Checkout() {
 
   const inputClass =
     'w-full border border-gray-200 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black/10'
+
+  // ⭐ Stripe 唔需要上載截圖
+  const isStripe = payMethod === 'Stripe'
 
   // ⭐ 顯示用 helper
   const regionLabel = (r) => t('region.' + (REGION_LABEL_KEY[r] || 'other'))
@@ -312,10 +315,8 @@ function Checkout() {
     e.target.value = ''
   }
 
-  async function handleSubmit() {
-    if (!proofUrl) return alert(t('checkout.alertProof'))
-    setSubmitting(true)
-
+  // ⭐ 共用:建立訂單,回傳 order_number
+  async function createOrder() {
     const sfStation = useSFStore
       ? (sfStationName ? `${sfStationName} (${sfStationCode.trim()})` : sfStationCode.trim())
       : null
@@ -344,23 +345,78 @@ function Checkout() {
       p_customer_address: finalAddress,
       p_sf_station: sfStation,
       p_payment_method: payMethod,
-      p_proof_url: proofUrl,
+      p_proof_url: proofUrl || null,            // ⭐ Stripe 會係 null
       p_note: note.trim() || null,
       p_customer_email: email.trim() || null,
       p_discount_code: appliedCode || null,
     })
 
-    setSubmitting(false)
+    if (error) throw error
+    return Array.isArray(data) ? data[0]?.order_number : data?.order_number
+  }
 
-    if (error) {
-      console.error(error)
-      return alert(t('checkout.orderFail') + error.message)
+  async function handleSubmit() {
+  // 只有 FPS / PayMe 要截圖
+  if (!isStripe && !proofUrl) return alert(t('checkout.alertProof'))
+  setSubmitting(true)
+
+  try {
+    // ⭐ Stripe:先落單 → 再開 session
+    if (isStripe) {
+      const orderNumber = await createOrder()
+
+      let r
+      try {
+        r = await fetch('/api/create-checkout-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderNumber,
+            amount: grandTotal,
+            description: `CaseMod 訂單 ${orderNumber}`,
+            email: email.trim() || undefined,
+            origin: window.location.origin,
+          }),
+        })
+      } catch (netErr) {
+        setSubmitting(false)
+        return alert('連線付款服務失敗(請用 vercel dev 或正式網站):' + netErr.message)
+      }
+
+      // ⭐ 安全解析:避免空 body 爆 "Unexpected end of JSON input"
+      const raw = await r.text()
+      let json = {}
+      try { json = raw ? JSON.parse(raw) : {} } catch {
+        setSubmitting(false)
+        return alert(
+          '付款服務未啟動。\n' +
+          '本機請用「vercel dev」執行,或部署到 Vercel 後再試。\n' +
+          `(訂單 ${orderNumber} 已建立,稍後可於後台處理)`
+        )
+      }
+
+      if (!r.ok || !json.url) {
+        setSubmitting(false)
+        return alert('信用卡付款啟動失敗:' + (json.error || `HTTP ${r.status}`))
+      }
+
+      // 跳去 Stripe(成功返嚟由 OrderSuccess 處理)
+      window.location.href = json.url
+      return
     }
 
+    // ⭐ FPS / PayMe:照原本流程
+    const orderNumber = await createOrder()
+    setSubmitting(false)
     setDone(true)
     clearCart()
-    navigate('/order-success', { state: { orderNumber: data.order_number } })
+    navigate('/order-success', { state: { orderNumber } })
+  } catch (e) {
+    setSubmitting(false)
+    console.error(e)
+    alert(t('checkout.orderFail') + e.message)
   }
+}
 
   const pay = settings || {}
 
@@ -557,15 +613,20 @@ function Checkout() {
                 {discountError && <p className="text-xs text-red-500 mt-1">{discountError}</p>}
               </div>
 
+              {/* ⭐ 付款方式:加咗信用卡(Stripe) */}
               <div className="pt-2">
                 <label className="block text-sm font-medium mb-2">{t('pay.method')}</label>
-                <div className="grid grid-cols-2 gap-3">
-                  {['FPS', 'PayMe'].map((m) => (
-                    <button key={m} type="button" onClick={() => setPayMethod(m)}
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    ['FPS', t('pay.fps')],
+                    ['PayMe', t('pay.payme')],
+                    ['Stripe', '信用卡'],
+                  ].map(([val, label]) => (
+                    <button key={val} type="button" onClick={() => setPayMethod(val)}
                       className={`py-3 rounded-lg border text-sm font-medium transition ${
-                        payMethod === m ? 'border-black bg-black text-white' : 'border-gray-200 hover:border-gray-400'
+                        payMethod === val ? 'border-black bg-black text-white' : 'border-gray-200 hover:border-gray-400'
                       }`}>
-                      {m === 'FPS' ? t('pay.fps') : t('pay.payme')}
+                      {label}
                     </button>
                   ))}
                 </div>
@@ -582,60 +643,80 @@ function Checkout() {
             <>
               <h2 className="font-medium text-sm text-gray-500">{t('checkout.payH')}</h2>
 
-              <div className="border border-gray-100 rounded-xl p-5">
-                <p className="text-sm text-gray-500 mb-1">{t('pay.payWith').replace('{m}', payMethod === 'FPS' ? t('pay.fps') : t('pay.payme'))}</p>
-                <p className="text-2xl font-bold mb-4">HK${grandTotal}</p>
+              {/* ⭐ Stripe 信用卡:唔使 QR / 唔使截圖 */}
+              {isStripe ? (
+                <>
+                  <div className="border border-gray-100 rounded-xl p-5">
+                    <p className="text-sm text-gray-500 mb-1">信用卡付款</p>
+                    <p className="text-2xl font-bold mb-3">HK${grandTotal}</p>
+                    <p className="text-sm text-gray-500">
+                      撳下面按鈕會跳去安全付款頁(Stripe)輸入信用卡資料,完成後自動返回。
+                    </p>
+                  </div>
 
-                {payMethod === 'FPS' ? (
-                  <div className="space-y-2 text-sm">
-                    {pay.fps_phone && <p>{t('pay.fpsId')}:<span className="font-medium">{pay.fps_phone}</span></p>}
-                    {pay.fps_name && <p>{t('pay.payee')}:<span className="font-medium">{pay.fps_name}</span></p>}
-                    {pay.fps_qr_url && (
-                      <img src={pay.fps_qr_url} alt="FPS QR" className="w-48 h-48 object-contain border rounded-lg mt-2" />
-                    )}
-                    {!pay.fps_phone && !pay.fps_qr_url && (
-                      <p className="text-amber-600">{t('pay.noFps')}</p>
+                  <button onClick={handleSubmit} disabled={submitting}
+                    className="w-full mt-2 bg-black text-white py-4 rounded-lg font-medium hover:bg-gray-800 transition disabled:opacity-50">
+                    {submitting ? t('checkout.submitting') : `前往付款 HK$${grandTotal}`}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="border border-gray-100 rounded-xl p-5">
+                    <p className="text-sm text-gray-500 mb-1">{t('pay.payWith').replace('{m}', payMethod === 'FPS' ? t('pay.fps') : t('pay.payme'))}</p>
+                    <p className="text-2xl font-bold mb-4">HK${grandTotal}</p>
+
+                    {payMethod === 'FPS' ? (
+                      <div className="space-y-2 text-sm">
+                        {pay.fps_phone && <p>{t('pay.fpsId')}:<span className="font-medium">{pay.fps_phone}</span></p>}
+                        {pay.fps_name && <p>{t('pay.payee')}:<span className="font-medium">{pay.fps_name}</span></p>}
+                        {pay.fps_qr_url && (
+                          <img src={pay.fps_qr_url} alt="FPS QR" className="w-48 h-48 object-contain border rounded-lg mt-2" />
+                        )}
+                        {!pay.fps_phone && !pay.fps_qr_url && (
+                          <p className="text-amber-600">{t('pay.noFps')}</p>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-2 text-sm">
+                        {pay.payme_link && (
+                          <a href={pay.payme_link} target="_blank" rel="noreferrer"
+                            className="inline-block text-blue-600 underline break-all">{pay.payme_link}</a>
+                        )}
+                        {pay.payme_qr_url && (
+                          <img src={pay.payme_qr_url} alt="PayMe QR" className="w-48 h-48 object-contain border rounded-lg mt-2" />
+                        )}
+                        {!pay.payme_link && !pay.payme_qr_url && (
+                          <p className="text-amber-600">{t('pay.noPayme')}</p>
+                        )}
+                      </div>
                     )}
                   </div>
-                ) : (
-                  <div className="space-y-2 text-sm">
-                    {pay.payme_link && (
-                      <a href={pay.payme_link} target="_blank" rel="noreferrer"
-                        className="inline-block text-blue-600 underline break-all">{pay.payme_link}</a>
+
+                  <div className="border border-gray-100 rounded-xl p-5">
+                    <p className="text-sm font-medium mb-2">{t('pay.uploadProof')} <span className="text-red-400">*</span></p>
+                    <p className="text-xs text-gray-400 mb-3">{t('pay.uploadHint')}</p>
+
+                    {proofUrl ? (
+                      <div className="relative inline-block">
+                        <img src={proofPreview} alt="proof" className="w-40 rounded-lg border" />
+                        <button onClick={() => { setProofUrl(''); setProofPreview('') }}
+                          className="absolute top-1 right-1 w-6 h-6 flex items-center justify-center rounded-full bg-white/90 text-gray-600 shadow hover:bg-red-500 hover:text-white transition">
+                          ×
+                        </button>
+                      </div>
+                    ) : (
+                      <input type="file" accept="image/*" onChange={handleUploadProof}
+                        className="text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:bg-black file:text-white hover:file:bg-gray-800 file:cursor-pointer" />
                     )}
-                    {pay.payme_qr_url && (
-                      <img src={pay.payme_qr_url} alt="PayMe QR" className="w-48 h-48 object-contain border rounded-lg mt-2" />
-                    )}
-                    {!pay.payme_link && !pay.payme_qr_url && (
-                      <p className="text-amber-600">{t('pay.noPayme')}</p>
-                    )}
+                    {uploading && <p className="text-xs text-gray-400 mt-2">{t('pay.uploading')}</p>}
                   </div>
-                )}
-              </div>
 
-              <div className="border border-gray-100 rounded-xl p-5">
-                <p className="text-sm font-medium mb-2">{t('pay.uploadProof')} <span className="text-red-400">*</span></p>
-                <p className="text-xs text-gray-400 mb-3">{t('pay.uploadHint')}</p>
-
-                {proofUrl ? (
-                  <div className="relative inline-block">
-                    <img src={proofPreview} alt="proof" className="w-40 rounded-lg border" />
-                    <button onClick={() => { setProofUrl(''); setProofPreview('') }}
-                      className="absolute top-1 right-1 w-6 h-6 flex items-center justify-center rounded-full bg-white/90 text-gray-600 shadow hover:bg-red-500 hover:text-white transition">
-                      ×
-                    </button>
-                  </div>
-                ) : (
-                  <input type="file" accept="image/*" onChange={handleUploadProof}
-                    className="text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:bg-black file:text-white hover:file:bg-gray-800 file:cursor-pointer" />
-                )}
-                {uploading && <p className="text-xs text-gray-400 mt-2">{t('pay.uploading')}</p>}
-              </div>
-
-              <button onClick={handleSubmit} disabled={submitting || uploading || !proofUrl}
-                className="w-full mt-2 bg-black text-white py-4 rounded-lg font-medium hover:bg-gray-800 transition disabled:opacity-50">
-                {submitting ? t('checkout.submitting') : t('checkout.confirmPay')}
-              </button>
+                  <button onClick={handleSubmit} disabled={submitting || uploading || !proofUrl}
+                    className="w-full mt-2 bg-black text-white py-4 rounded-lg font-medium hover:bg-gray-800 transition disabled:opacity-50">
+                    {submitting ? t('checkout.submitting') : t('checkout.confirmPay')}
+                  </button>
+                </>
+              )}
             </>
           )}
         </div>

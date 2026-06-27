@@ -5,9 +5,13 @@ import AdminNav from '../components/AdminNav'
 const emptyForm = {
   id: null,
   name_zh_hk: '',
+  name_zh_cn: '',
+  name_en: '',
   parent_id: '',
   child_id: '',
   description: '',
+  description_zh_cn: '',
+  description_en: '',
   price_hkd: '',
   sale_price: '',
   stock: '',
@@ -87,9 +91,13 @@ function AdminProducts() {
     setForm({
       id: p.id,
       name_zh_hk: p.name_zh_hk || '',
+      name_zh_cn: p.name_zh_cn || '',        // ⭐
+      name_en: p.name_en || '',              // ⭐
       parent_id,
       child_id,
       description: p.description || '',
+      description_zh_cn: p.description_zh_cn || '',   // ⭐
+      description_en: p.description_en || '',         // ⭐
       price_hkd: p.price_hkd ?? '',
       sale_price: p.sale_price ?? '',
       stock: p.stock ?? '',
@@ -173,9 +181,13 @@ function AdminProducts() {
 
     const payload = {
       name_zh_hk: form.name_zh_hk.trim(),
+      name_zh_cn: form.name_zh_cn.trim() || null,        // ⭐
+      name_en: form.name_en.trim() || null,              // ⭐
       collection_id: finalCollectionId,
       collection: collectionName,
       description: form.description.trim() || null,
+      description_zh_cn: form.description_zh_cn.trim() || null,   // ⭐
+      description_en: form.description_en.trim() || null,        // ⭐
       price_hkd: Number(form.price_hkd),
       sale_price: form.sale_price === '' ? null : Number(form.sale_price),
       stock: form.stock === '' ? null : Number(form.stock),
@@ -351,10 +363,17 @@ function AdminProducts() {
                   {uploading && <p className="text-xs text-gray-400 mt-1">上載緊…</p>}
                 </div>
 
+                {/* 產品名稱(三語) */}
                 <div>
-                  <label className="block text-sm font-medium mb-2">產品名稱 <span className="text-red-400">*</span></label>
+                  <label className="block text-sm font-medium mb-2">
+                    產品名稱 <span className="text-red-400">*</span>
+                  </label>
                   <input value={form.name_zh_hk} onChange={(e) => setForm({ ...form, name_zh_hk: e.target.value })}
-                    className={inputClass} placeholder="例如 簡約大理石" />
+                    className={inputClass} placeholder="繁體中文(必填)" />
+                  <input value={form.name_zh_cn} onChange={(e) => setForm({ ...form, name_zh_cn: e.target.value })}
+                    className={`${inputClass} mt-2`} placeholder="简体中文(留空 = 用繁中)" />
+                  <input value={form.name_en} onChange={(e) => setForm({ ...form, name_en: e.target.value })}
+                    className={`${inputClass} mt-2`} placeholder="English (blank = use 繁中)" />
                 </div>
 
                 {/* 系列:兩層揀選 */}
@@ -396,10 +415,15 @@ function AdminProducts() {
                   </p>
                 </div>
 
+                {/* 詳細介紹(三語) */}
                 <div>
                   <label className="block text-sm font-medium mb-2">詳細介紹</label>
                   <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })}
-                    rows={3} className={inputClass} placeholder="產品描述、物料、特點…" />
+                    rows={3} className={inputClass} placeholder="繁體中文 — 產品描述、物料、特點…" />
+                  <textarea value={form.description_zh_cn} onChange={(e) => setForm({ ...form, description_zh_cn: e.target.value })}
+                    rows={3} className={`${inputClass} mt-2`} placeholder="简体中文(留空 = 用繁中)" />
+                  <textarea value={form.description_en} onChange={(e) => setForm({ ...form, description_en: e.target.value })}
+                    rows={3} className={`${inputClass} mt-2`} placeholder="English (blank = use 繁中)" />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
