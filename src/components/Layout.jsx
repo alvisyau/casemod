@@ -1,7 +1,10 @@
+import { useState } from 'react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useCart } from '../context/CartContext'
 import { useLang } from '../context/LanguageContext'
 import { LANGUAGES } from '../i18n/translations'
+import { legal, LEGAL_KEYS } from '../i18n/legal'
+import PolicyModal from './PolicyModal'
 import BrandLogo from './BrandLogo'
 
 function Layout() {
@@ -9,6 +12,10 @@ function Layout() {
   const linkClass = ({ isActive }) =>
     `text-sm transition ${isActive ? 'text-black font-medium' : 'text-gray-500 hover:text-black'}`
   const { totalCount } = useCart()
+
+  // ⭐ 條款彈窗
+  const [activePolicy, setActivePolicy] = useState(null)
+  const policies = legal[lang] || legal['zh-HK']
 
   return (
     <div className="min-h-screen flex flex-col bg-white text-gray-900">
@@ -35,7 +42,6 @@ function Layout() {
               )}
             </Link>
 
-
             {/* ⭐ 語言切換 */}
             <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
               {LANGUAGES.map((l) => (
@@ -55,17 +61,35 @@ function Layout() {
 
       {/* 頁尾 */}
       <footer className="border-t border-gray-100 mt-20">
-        <div className="max-w-5xl mx-auto px-4 py-10 flex flex-col sm:flex-row justify-between gap-6">
+        <div className="max-w-5xl mx-auto px-4 py-10 flex flex-col sm:flex-row justify-between gap-8">
           <div>
             <p className="font-bold tracking-tight">CASEMOD</p>
             <p className="text-sm text-gray-400 mt-1">{t('footer.tagline')}</p>
           </div>
+
+          {/* ⭐ 條款連結 */}
+          <div className="text-sm space-y-2">
+            {LEGAL_KEYS.map((key) => (
+              <button
+                key={key}
+                onClick={() => setActivePolicy(policies[key])}
+                className="block text-gray-400 hover:text-black transition"
+              >
+                {policies[key].title}
+              </button>
+            ))}
+          </div>
+
           <div className="text-sm text-gray-400 space-y-1">
-            <p>WhatsApp · Instagram · WeChat</p>
+            <p>WhatsApp · Instagram ·</p>
+            <p>info@casemod.shop</p>
             <p>© {new Date().getFullYear()} Casemod</p>
           </div>
         </div>
       </footer>
+
+      {/* ⭐ 條款彈窗 */}
+      <PolicyModal policy={activePolicy} onClose={() => setActivePolicy(null)} />
     </div>
   )
 }
