@@ -124,6 +124,9 @@ function Order() {
   const [discountError, setDiscountError] = useState('')
   const [applying, setApplying] = useState(false)
 
+  // ⭐ Stripe(信用卡)係咪選中
+  const isStripe = payMethod === 'Stripe'
+
   const regionLabel = (r) => t('region.' + (REGION_LABEL_KEY[r] || 'other'))
   const carrierLabel = (r) => (['香港', '內地', '澳門'].includes(r) ? t('delivery.carrierSF') : t('delivery.carrierOther'))
 
@@ -340,7 +343,8 @@ function Order() {
     } else {
       if (!address.trim()) return alert(t('checkout.alertAddress'))
     }
-    if (!proofUrl) return alert(t('order.alertProof'))
+    // ⭐ Stripe 唔需要上傳付款證明;FPS/PayMe 先需要
+    if (!isStripe && !proofUrl) return alert(t('order.alertProof'))
     setStep(4)
     window.scrollTo(0, 0)
   }
@@ -485,7 +489,7 @@ function Order() {
         p_shipping_method:  shippingMethod,
         p_sf_station:       sfStation || null,
         p_payment_method:   payMethod,
-        p_proof_url:        proofUrl,
+        p_proof_url:        proofUrl || null,
         p_note:             note.trim() || null,
         p_customer_email:   email.trim() || null,
         p_discount_code:    appliedCode || null,
@@ -493,6 +497,27 @@ function Order() {
 
       if (error) throw error
       const orderNumber = Array.isArray(data) ? data[0]?.order_number : data?.order_number
+
+      // ⭐ Stripe:落單後跳轉去 Stripe 付款頁
+      if (isStripe) {
+        const res = await fetch('/api/create-checkout-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderNumber,
+            amount: grandTotal,
+            description: `客製化 — ${modeDescZh}`,
+            email: email.trim(),
+            origin: window.location.origin,
+          }),
+        })
+        const json = await res.json()
+        if (!res.ok || !json.url) throw new Error(json.error || t('order.stripeFail'))
+        window.location.href = json.url
+        return
+      }
+
+      // FPS / PayMe:直接去成功頁
       navigate('/order-success', { state: { orderNumber } })
     } catch (e) {
       console.error(e)
@@ -504,6 +529,10 @@ function Order() {
 
   const pay = settings || {}
   const steps = [t('order.steps0'), t('order.steps1'), t('order.steps2'), t('order.steps3')]
+
+  // 付款方式顯示文字
+  const payMethodLabel = (m) =>
+    m === 'FPS' ? t('pay.fps') : m === 'PayMe' ? t('pay.payme') : t('pay.card')
 
   // 確認頁:派送方式顯示(跟語言)
   const deliveryDisplay = useSFStore
@@ -871,64 +900,76 @@ function Order() {
             {discountError && <p className="text-xs text-red-500 mt-1">{discountError}</p>}
           </div>
 
+          {/* 付款方式 */}
           <div className="pt-2">
             <label className="block text-sm font-medium mb-2">{t('pay.method')}</label>
-            <div className="grid grid-cols-2 gap-3">
-              {['FPS', 'PayMe'].map((m) => (
+            <div className="grid grid-cols-3 gap-3">
+              {['FPS', 'PayMe', 'Stripe'].map((m) => (
                 <button key={m} type="button" onClick={() => setPayMethod(m)}
                   className={`py-3 rounded-lg border text-sm font-medium transition ${
                     payMethod === m ? 'border-black bg-black text-white' : 'border-gray-200 hover:border-gray-400'
                   }`}>
-                  {m === 'FPS' ? t('pay.fps') : t('pay.payme')}
+                  {payMethodLabel(m)}
                 </button>
               ))}
             </div>
           </div>
 
-          <div className="border border-gray-100 rounded-xl p-5">
-            <p className="text-sm text-gray-500 mb-1">
-              {t('pay.payWith').replace('{m}', payMethod === 'FPS' ? t('pay.fps') : t('pay.payme'))}
-            </p>
-            <p className="text-2xl font-bold mb-4">HK${grandTotal}</p>
-            {payMethod === 'FPS' ? (
-              <div className="space-y-2 text-sm">
-                {pay.fps_phone && <p>{t('pay.fpsId')}:<span className="font-medium">{pay.fps_phone}</span></p>}
-                {pay.fps_name && <p>{t('pay.payee')}:<span className="font-medium">{pay.fps_name}</span></p>}
-                {pay.fps_qr_url && <img src={pay.fps_qr_url} alt="FPS QR" className="w-48 h-48 object-contain border rounded-lg mt-2" />}
-                {!pay.fps_phone && !pay.fps_qr_url && (
-                  <p className="text-amber-600">{t('pay.noFps')}</p>
+          {/* ⭐ Stripe:唔使上傳證明,顯示提示;FPS/PayMe:顯示收款資料 + 上傳證明 */}
+          {isStripe ? (
+            <div className="border border-gray-100 rounded-xl p-5">
+              <p className="text-sm text-gray-500 mb-1">{t('pay.payWith').replace('{m}', t('pay.card'))}</p>
+              <p className="text-2xl font-bold mb-3">HK${grandTotal}</p>
+              <p className="text-sm text-gray-600">{t('pay.cardNote')}</p>
+            </div>
+          ) : (
+            <>
+              <div className="border border-gray-100 rounded-xl p-5">
+                <p className="text-sm text-gray-500 mb-1">
+                  {t('pay.payWith').replace('{m}', payMethod === 'FPS' ? t('pay.fps') : t('pay.payme'))}
+                </p>
+                <p className="text-2xl font-bold mb-4">HK${grandTotal}</p>
+                {payMethod === 'FPS' ? (
+                  <div className="space-y-2 text-sm">
+                    {pay.fps_phone && <p>{t('pay.fpsId')}:<span className="font-medium">{pay.fps_phone}</span></p>}
+                    {pay.fps_name && <p>{t('pay.payee')}:<span className="font-medium">{pay.fps_name}</span></p>}
+                    {pay.fps_qr_url && <img src={pay.fps_qr_url} alt="FPS QR" className="w-48 h-48 object-contain border rounded-lg mt-2" />}
+                    {!pay.fps_phone && !pay.fps_qr_url && (
+                      <p className="text-amber-600">{t('pay.noFps')}</p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-2 text-sm">
+                    {pay.payme_link && (
+                      <a href={pay.payme_link} target="_blank" rel="noreferrer" className="inline-block text-blue-600 underline break-all">{pay.payme_link}</a>
+                    )}
+                    {pay.payme_qr_url && <img src={pay.payme_qr_url} alt="PayMe QR" className="w-48 h-48 object-contain border rounded-lg mt-2" />}
+                    {!pay.payme_link && !pay.payme_qr_url && (
+                      <p className="text-amber-600">{t('pay.noPayme')}</p>
+                    )}
+                  </div>
                 )}
               </div>
-            ) : (
-              <div className="space-y-2 text-sm">
-                {pay.payme_link && (
-                  <a href={pay.payme_link} target="_blank" rel="noreferrer" className="inline-block text-blue-600 underline break-all">{pay.payme_link}</a>
-                )}
-                {pay.payme_qr_url && <img src={pay.payme_qr_url} alt="PayMe QR" className="w-48 h-48 object-contain border rounded-lg mt-2" />}
-                {!pay.payme_link && !pay.payme_qr_url && (
-                  <p className="text-amber-600">{t('pay.noPayme')}</p>
-                )}
-              </div>
-            )}
-          </div>
 
-          <div className="border border-gray-100 rounded-xl p-5">
-            <p className="text-sm font-medium mb-2">{t('pay.uploadProof')} <span className="text-red-400">*</span></p>
-            <p className="text-xs text-gray-400 mb-3">{t('pay.uploadHint')}</p>
-            {proofUrl ? (
-              <div className="relative inline-block">
-                <img src={proofPreview} alt="proof" className="w-40 rounded-lg border" />
-                <button onClick={() => { setProofUrl(''); setProofPreview('') }}
-                  className="absolute top-1 right-1 w-6 h-6 flex items-center justify-center rounded-full bg-white/90 text-gray-600 shadow hover:bg-red-500 hover:text-white transition">
-                  ×
-                </button>
+              <div className="border border-gray-100 rounded-xl p-5">
+                <p className="text-sm font-medium mb-2">{t('pay.uploadProof')} <span className="text-red-400">*</span></p>
+                <p className="text-xs text-gray-400 mb-3">{t('pay.uploadHint')}</p>
+                {proofUrl ? (
+                  <div className="relative inline-block">
+                    <img src={proofPreview} alt="proof" className="w-40 rounded-lg border" />
+                    <button onClick={() => { setProofUrl(''); setProofPreview('') }}
+                      className="absolute top-1 right-1 w-6 h-6 flex items-center justify-center rounded-full bg-white/90 text-gray-600 shadow hover:bg-red-500 hover:text-white transition">
+                      ×
+                    </button>
+                  </div>
+                ) : (
+                  <input type="file" accept="image/*" onChange={handleUploadProof}
+                    className="text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:bg-black file:text-white hover:file:bg-gray-800 file:cursor-pointer" />
+                )}
+                {uploading && <p className="text-xs text-gray-400 mt-2">{t('pay.uploading')}</p>}
               </div>
-            ) : (
-              <input type="file" accept="image/*" onChange={handleUploadProof}
-                className="text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:bg-black file:text-white hover:file:bg-gray-800 file:cursor-pointer" />
-            )}
-            {uploading && <p className="text-xs text-gray-400 mt-2">{t('pay.uploading')}</p>}
-          </div>
+            </>
+          )}
 
           <div className="mt-8 flex justify-between">
             <button onClick={() => setStep(2)} className="px-6 py-2 rounded-lg border border-gray-300 font-medium">{t('order.back')}</button>
@@ -977,7 +1018,7 @@ function Order() {
                 ? `${deliveryDisplay} — ${sfStationName || ''}${sfStationCode ? ` (${sfStationCode})` : ''}`
                 : `${deliveryDisplay} — ${address}`}
             </p>
-            <p><span className="text-gray-500">{t('order.payment')}:</span> {payMethod === 'FPS' ? t('pay.fps') : t('pay.payme')}</p>
+            <p><span className="text-gray-500">{t('order.payment')}:</span> {payMethodLabel(payMethod)}</p>
             {note && <p><span className="text-gray-500">{t('order.note')}:</span> {note}</p>}
           </div>
 
@@ -1003,7 +1044,7 @@ function Order() {
               className="px-6 py-2 rounded-lg border border-gray-300 font-medium disabled:opacity-50">{t('order.back')}</button>
             <button onClick={handleSubmit} disabled={submitting || uploading}
               className="px-6 py-2 rounded-lg bg-black text-white font-medium hover:bg-gray-800 transition disabled:opacity-50">
-              {submitting ? t('order.submitting') : t('order.confirmOrder')}
+              {submitting ? t('order.submitting') : isStripe ? t('order.payNow') : t('order.confirmOrder')}
             </button>
           </div>
         </div>
